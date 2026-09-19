@@ -1,21 +1,11 @@
-import { useEffect, useState } from 'react';
-import { useColorScheme as useRNColorScheme } from 'react-native';
+import { useColorScheme as useRNColorScheme } from "react-native";
 
 /**
- * To support static rendering, this value needs to be re-calculated on the client side for web
+ * Web color scheme hook.
+ *
+ * MotoPilot is primarily an Android application,
+ * but this keeps the web version compatible.
  */
 export function useColorScheme() {
-  const [hasHydrated, setHasHydrated] = useState(false);
-
-  useEffect(() => {
-    setHasHydrated(true);
-  }, []);
-
-  const colorScheme = useRNColorScheme();
-
-  if (hasHydrated) {
-    return colorScheme;
-  }
-
-  return 'light';
+  return useRNColorScheme() ?? "light";
 }

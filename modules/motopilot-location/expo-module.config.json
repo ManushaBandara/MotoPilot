@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android", "web"],
+  "apple": {
+    "modules": ["MotoPilotLocationModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.motopilotlocation.MotoPilotLocationModule"]
+  }
+}
