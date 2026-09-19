@@ -330,9 +330,10 @@ export function useNavigationSession() {
      * navigation step.
      */
     distanceToNextManeuverMeters:
-      session.distanceToNextManeuverMeters,
-
-    navigationError,
+  session.distanceToNextManeuverMeters,
+maneuverPhase:
+  session.maneuverPhase,
+navigationError,
 
     startNavigation,
 

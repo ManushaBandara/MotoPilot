@@ -8,6 +8,12 @@ export type Destination = {
   longitude: number;
 };
 
+export type ManeuverPhase =
+  | "FAR"
+  | "APPROACHING"
+  | "IMMINENT"
+  | "PASSED";
+
 export type NavigationStep = {
   distanceMeters: number;
 
@@ -16,8 +22,6 @@ export type NavigationStep = {
   instruction: string;
 
   maneuver: string;
-
-  maneuverPhase: "ManeuverPhase";
 
   startLocation: {
     latitude: number;
@@ -55,9 +59,3 @@ export type RouteRequest = {
     longitude: number;
   };
 };
-
-export type ManeuverPhase =
-  | "FAR"
-  | "APPROACHING"
-  | "IMMINENT"
-  | "PASSED";

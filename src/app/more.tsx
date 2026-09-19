@@ -22,7 +22,9 @@ export default function MoreScreen() {
           styles.actionButton,
           pressed && styles.buttonPressed,
         ]}
-        onPress={() => router.push("/maintenance")}
+        onPress={() =>
+          router.push("/maintenance")
+        }
       >
         <View>
           <Text style={styles.buttonTitle}>
@@ -44,7 +46,9 @@ export default function MoreScreen() {
           styles.actionButton,
           pressed && styles.buttonPressed,
         ]}
-        onPress={() => router.push("/map-test")}
+        onPress={() =>
+          router.push("/map-test")
+        }
       >
         <View>
           <Text style={styles.buttonTitle}>
@@ -53,6 +57,30 @@ export default function MoreScreen() {
 
           <Text style={styles.buttonSubtitle}>
             Test Google Maps inside MotoPilot
+          </Text>
+        </View>
+
+        <Text style={styles.arrow}>
+          →
+        </Text>
+      </Pressable>
+
+      <Pressable
+        style={({ pressed }) => [
+          styles.actionButton,
+          pressed && styles.buttonPressed,
+        ]}
+        onPress={() =>
+          router.push("/settings")
+        }
+      >
+        <View>
+          <Text style={styles.buttonTitle}>
+            SETTINGS
+          </Text>
+
+          <Text style={styles.buttonSubtitle}>
+            MotoPilot configuration
           </Text>
         </View>
 

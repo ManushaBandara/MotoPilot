@@ -4,6 +4,14 @@ import {
 } from "./fuelCalculator";
 
 import {
+  getFuelEntries,
+} from "./database";
+
+import {
+  calculateFuelEfficiency,
+} from "./fuelEfficiency";
+
+import {
   getFuelSettings,
   updateEstimatedFuelRemaining,
 } from "./fuelSettings";
@@ -30,28 +38,59 @@ export async function processRideFuelConsumption(
   const settings =
     await getFuelSettings();
 
+  /*
+   * Get the measured efficiency from
+   * full-tank checkpoints.
+   */
+  const fuelEntries =
+    await getFuelEntries();
+
+  const efficiencyResult =
+    calculateFuelEfficiency(
+      fuelEntries
+    );
+
+  /*
+   * Measured efficiency is authoritative
+   * when available.
+   *
+   * Manual settings remain the fallback
+   * until enough full-tank checkpoints
+   * have been recorded.
+   */
+  const effectiveKmPerLitre =
+    efficiencyResult.estimatedKmPerLitre ??
+    settings.estimatedKmPerLitre;
+
   if (
     !Number.isFinite(
-      settings.estimatedKmPerLitre
+      effectiveKmPerLitre
     ) ||
-    settings.estimatedKmPerLitre <= 0
+    effectiveKmPerLitre <= 0
   ) {
     throw new Error(
       "Estimated fuel efficiency is not configured."
     );
   }
 
+  /*
+   * Calculate estimated fuel consumed
+   * using the effective efficiency.
+   */
   const fuelConsumedLitres =
     calculateFuelConsumed(
       distanceKm,
-      settings.estimatedKmPerLitre
+      effectiveKmPerLitre
     );
 
+  /*
+   * Reduce the estimated tank level.
+   */
   const estimatedFuelRemainingLitres =
     consumeFuelFromTank(
       settings.estimatedFuelRemainingLitres,
       distanceKm,
-      settings.estimatedKmPerLitre
+      effectiveKmPerLitre
     );
 
   await updateEstimatedFuelRemaining(
@@ -61,9 +100,12 @@ export async function processRideFuelConsumption(
 
   return {
     distanceKm,
+
     estimatedKmPerLitre:
-      settings.estimatedKmPerLitre,
+      effectiveKmPerLitre,
+
     fuelConsumedLitres,
+
     estimatedFuelRemainingLitres,
   };
 }

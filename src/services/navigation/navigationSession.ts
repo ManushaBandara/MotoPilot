@@ -5,6 +5,7 @@ import {
 
 import type {
   Destination,
+  ManeuverPhase,
   NavigationStep,
   RouteInfo,
 } from "./navigationTypes";
@@ -39,6 +40,8 @@ export type NavigationSessionState = {
   currentStep: NavigationStep | null;
 
   distanceToNextManeuverMeters: number;
+
+  maneuverPhase: ManeuverPhase;
 };
 
 export type NavigationUpdateResult = {
@@ -68,6 +71,22 @@ const STEP_COMPLETION_RADIUS_METERS = 25;
  */
 const STEP_ROUTE_PROGRESS_TOLERANCE_METERS = 25;
 
+/**
+ * Maneuver guidance thresholds.
+ *
+ * More than 150m:
+ * FAR
+ *
+ * 50m - 150m:
+ * APPROACHING
+ *
+ * 0m - 50m:
+ * IMMINENT
+ */
+const MANEUVER_APPROACHING_DISTANCE_METERS = 150;
+
+const MANEUVER_IMMINENT_DISTANCE_METERS = 50;
+
 export function createNavigationSessionState(): NavigationSessionState {
   return {
     status: "IDLE",
@@ -93,6 +112,8 @@ export function createNavigationSessionState(): NavigationSessionState {
     currentStep: null,
 
     distanceToNextManeuverMeters: 0,
+
+    maneuverPhase: "FAR",
   };
 }
 
@@ -318,6 +339,30 @@ function calculateProgress(
 }
 
 /**
+ * Determine the current maneuver phase
+ * from the distance to the maneuver.
+ */
+function getManeuverPhase(
+  distanceToManeuverMeters: number
+): ManeuverPhase {
+  if (
+    distanceToManeuverMeters <=
+    MANEUVER_IMMINENT_DISTANCE_METERS
+  ) {
+    return "IMMINENT";
+  }
+
+  if (
+    distanceToManeuverMeters <=
+    MANEUVER_APPROACHING_DISTANCE_METERS
+  ) {
+    return "APPROACHING";
+  }
+
+  return "FAR";
+}
+
+/**
  * Find the current navigation step.
  *
  * Step progression is based on both:
@@ -342,6 +387,8 @@ function getCurrentNavigationStep(
   step: NavigationStep | null;
 
   distanceToManeuverMeters: number;
+
+  stepAdvanced: boolean;
 } {
   if (steps.length === 0) {
     return {
@@ -350,6 +397,8 @@ function getCurrentNavigationStep(
       step: null,
 
       distanceToManeuverMeters: 0,
+
+      stepAdvanced: false,
     };
   }
 
@@ -357,6 +406,8 @@ function getCurrentNavigationStep(
     0,
     previousStepIndex
   );
+
+  let stepAdvanced = false;
 
   /**
    * Move forward through completed steps.
@@ -417,6 +468,8 @@ function getCurrentNavigationStep(
     ) {
       stepIndex += 1;
 
+      stepAdvanced = true;
+
       continue;
     }
 
@@ -439,6 +492,8 @@ function getCurrentNavigationStep(
 
     distanceToManeuverMeters:
       distanceToManeuver,
+
+    stepAdvanced,
   };
 }
 
@@ -489,6 +544,13 @@ export function startNavigationSession(
 
     distanceToNextManeuverMeters:
       distanceToFirstManeuver,
+
+    maneuverPhase:
+      firstStep
+        ? getManeuverPhase(
+            distanceToFirstManeuver
+          )
+        : "FAR",
   };
 }
 
@@ -554,6 +616,8 @@ export function updateNavigationSession(
           ] ?? null,
 
         distanceToNextManeuverMeters: 0,
+
+        maneuverPhase: "PASSED",
       },
 
       shouldReroute: false,
@@ -620,6 +684,19 @@ export function updateNavigationSession(
     );
 
   /**
+   * Determine the current maneuver phase.
+   *
+   * If the rider moved to a new step,
+   * the previous maneuver has been passed
+   * and the new maneuver starts in a fresh
+   * phase based on its distance.
+   */
+  const maneuverPhase =
+  getManeuverPhase(
+    navigationStep.distanceToManeuverMeters
+  );
+
+  /**
    * If the rider is sufficiently far away,
    * the session enters REROUTING state.
    *
@@ -675,6 +752,8 @@ export function updateNavigationSession(
 
     distanceToNextManeuverMeters:
       navigationStep.distanceToManeuverMeters,
+
+    maneuverPhase,
   };
 
   return {
@@ -738,6 +817,13 @@ export function applyNavigationRoute(
 
     distanceToNextManeuverMeters:
       distanceToFirstManeuver,
+
+    maneuverPhase:
+      firstStep
+        ? getManeuverPhase(
+            distanceToFirstManeuver
+          )
+        : "FAR",
   };
 }
 

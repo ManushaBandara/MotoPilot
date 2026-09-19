@@ -493,6 +493,29 @@ function getManeuverLabel(
 }
 
 /**
+ * Convert the maneuver phase into
+ * a compact display label.
+ */
+function getManeuverPhaseLabel(
+  phase: "FAR" | "APPROACHING" | "IMMINENT" | "PASSED"
+): string {
+  switch (phase) {
+    case "APPROACHING":
+      return "APPROACHING";
+
+    case "IMMINENT":
+      return "TURN NOW";
+
+    case "PASSED":
+      return "PASSED";
+
+    case "FAR":
+    default:
+      return "UPCOMING";
+  }
+}
+
+/**
  * Create a compact instruction suitable
  * for the navigation display.
  */
@@ -514,22 +537,22 @@ export default function NavigationScreen() {
     useRef<WebView>(null);
 
   const {
-    status,
-    destination,
-    remainingDistanceMeters,
-    remainingDurationSeconds,
-    progressPercent,
-    location,
-    offRoute,
-    speedKmh,
-    gpsError,
-    navigationError,
-    currentStep,
-    distanceToNextManeuverMeters,
-    startNavigation,
-    stopNavigation,
-  } = useNavigationSession();
-
+  status,
+  destination,
+  remainingDistanceMeters,
+  remainingDurationSeconds,
+  progressPercent,
+  location,
+  offRoute,
+  speedKmh,
+  gpsError,
+  navigationError,
+  currentStep,
+  distanceToNextManeuverMeters,
+  maneuverPhase,
+  startNavigation,
+  stopNavigation,
+} = useNavigationSession();
   const [searchText, setSearchText] =
     useState("");
 
@@ -814,6 +837,11 @@ export default function NavigationScreen() {
         )
       : "CONTINUE";
 
+  const maneuverPhaseLabel =
+  getManeuverPhaseLabel(
+    maneuverPhase
+  );
+
   const maneuverDistance =
     formatDistance(
       distanceToNextManeuverMeters
@@ -984,13 +1012,27 @@ export default function NavigationScreen() {
                     styles.maneuverTopRow
                   }
                 >
-                  <Text
+                  <View
                     style={
-                      styles.maneuverLabel
+                      styles.maneuverLabelContainer
                     }
                   >
-                    {maneuverLabel}
-                  </Text>
+                    <Text
+                      style={
+                        styles.maneuverLabel
+                      }
+                    >
+                      {maneuverLabel}
+                    </Text>
+
+                    <Text
+                      style={
+                        styles.maneuverPhase
+                      }
+                    >
+                      {maneuverPhase}
+                    </Text>
+                  </View>
 
                   <Text
                     style={
@@ -1557,11 +1599,24 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
 
+  maneuverLabelContainer: {
+    flex: 1,
+    marginRight: 8,
+  },
+
   maneuverLabel: {
     color: "#ffffff",
     fontSize: 12,
     fontWeight: "800",
     letterSpacing: 1.2,
+  },
+
+  maneuverPhase: {
+    color: "#777777",
+    fontSize: 7,
+    fontWeight: "800",
+    letterSpacing: 1.2,
+    marginTop: 3,
   },
 
   maneuverDistance: {

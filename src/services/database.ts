@@ -1,7 +1,12 @@
 import * as SQLite from "expo-sqlite";
 
+import type {
+  DashcamClip,
+  DashcamClipStatus,
+} from "./camera/dashcamTypes";
+
 const DATABASE_NAME = "motopilot.db";
-const DATABASE_VERSION = 4;
+const DATABASE_VERSION = 5;
 
 let database: SQLite.SQLiteDatabase | null = null;
 
@@ -96,7 +101,21 @@ async function initializeDatabase(): Promise<SQLite.SQLiteDatabase> {
     key TEXT PRIMARY KEY NOT NULL,
     value TEXT NOT NULL
   );
-`); 
+
+  CREATE TABLE IF NOT EXISTS dashcam_clips (
+    id TEXT PRIMARY KEY NOT NULL,
+    file_uri TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    ended_at TEXT,
+    duration_seconds REAL NOT NULL,
+    file_size_bytes INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    start_latitude REAL,
+    start_longitude REAL,
+    end_latitude REAL,
+    end_longitude REAL
+  );
+`);
 
   /* ============================================================
      RIDES MIGRATION
@@ -631,6 +650,165 @@ export async function getMaintenanceItems(): Promise<
     createdAt:
       row.created_at,
   }));
+}
+
+/* ============================================================
+   DASHCAM
+   ============================================================ */
+
+export async function saveDashcamClip(
+  clip: DashcamClip
+): Promise<void> {
+  const db = await getDatabase();
+
+  await db.runAsync(
+    `
+      INSERT OR REPLACE INTO dashcam_clips (
+        id,
+        file_uri,
+        started_at,
+        ended_at,
+        duration_seconds,
+        file_size_bytes,
+        status,
+        start_latitude,
+        start_longitude,
+        end_latitude,
+        end_longitude
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+    clip.id,
+    clip.fileUri,
+    clip.startedAt,
+    clip.endedAt,
+    clip.durationSeconds,
+    clip.fileSizeBytes,
+    clip.status,
+    clip.startLatitude,
+    clip.startLongitude,
+    clip.endLatitude,
+    clip.endLongitude
+  );
+}
+
+export async function getDashcamClips(): Promise<
+  DashcamClip[]
+> {
+  const db = await getDatabase();
+
+  const rows =
+    await db.getAllAsync<{
+      id: string;
+      file_uri: string;
+      started_at: string;
+      ended_at: string | null;
+      duration_seconds: number;
+      file_size_bytes: number;
+      status: string;
+      start_latitude: number | null;
+      start_longitude: number | null;
+      end_latitude: number | null;
+      end_longitude: number | null;
+    }>(
+      `
+        SELECT
+          id,
+          file_uri,
+          started_at,
+          ended_at,
+          duration_seconds,
+          file_size_bytes,
+          status,
+          start_latitude,
+          start_longitude,
+          end_latitude,
+          end_longitude
+        FROM dashcam_clips
+        ORDER BY started_at DESC
+      `
+    );
+
+  return rows.map((row) => ({
+    id: row.id,
+    fileUri: row.file_uri,
+    startedAt: row.started_at,
+    endedAt: row.ended_at,
+    durationSeconds:
+      row.duration_seconds,
+    fileSizeBytes:
+      row.file_size_bytes,
+    status:
+      row.status as DashcamClipStatus,
+    startLatitude:
+      row.start_latitude,
+    startLongitude:
+      row.start_longitude,
+    endLatitude:
+      row.end_latitude,
+    endLongitude:
+      row.end_longitude,
+  }));
+}
+
+export async function updateDashcamClipStatus(
+  clipId: string,
+  status: DashcamClipStatus
+): Promise<void> {
+  const db = await getDatabase();
+
+  await db.runAsync(
+    `
+      UPDATE dashcam_clips
+      SET status = ?
+      WHERE id = ?
+    `,
+    status,
+    clipId
+  );
+}
+
+export async function updateDashcamClipFile(
+  clipId: string,
+  fileUri: string,
+  status: DashcamClipStatus
+): Promise<void> {
+  const db = await getDatabase();
+
+  await db.runAsync(
+    `
+      UPDATE dashcam_clips
+      SET
+        file_uri = ?,
+        status = ?
+      WHERE id = ?
+    `,
+    fileUri,
+    status,
+    clipId
+  );
+}
+
+export async function deleteDashcamClip(
+  clipId: string
+): Promise<void> {
+  const db = await getDatabase();
+
+  await db.runAsync(
+    `
+      DELETE FROM dashcam_clips
+      WHERE id = ?
+    `,
+    clipId
+  );
+}
+
+export async function deleteAllDashcamClips(): Promise<void> {
+  const db = await getDatabase();
+
+  await db.execAsync(`
+    DELETE FROM dashcam_clips
+  `);
 }
 
 /* ============================================================

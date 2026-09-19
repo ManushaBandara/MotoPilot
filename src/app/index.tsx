@@ -21,6 +21,14 @@ import {
   calculateRemainingRange,
 } from "../services/fuelCalculator";
 
+import {
+  getFuelEntries,
+} from "../services/database";
+
+import {
+  calculateFuelEfficiency,
+} from "../services/fuelEfficiency";
+
 export default function HomeScreen() {
   const currentTime = useCurrentTime();
 
@@ -58,6 +66,9 @@ export default function HomeScreen() {
   const [fuelSettings, setFuelSettings] =
     useState<FuelSettings | null>(null);
 
+  const [measuredKmPerLitre, setMeasuredKmPerLitre] =
+    useState<number | null>(null);
+
   const [fuelError, setFuelError] =
     useState<string | null>(null);
 
@@ -67,11 +78,29 @@ export default function HomeScreen() {
 
       async function loadFuelData() {
         try {
-          const settings = await getFuelSettings();
+          const [
+            settings,
+            fuelEntries,
+          ] = await Promise.all([
+            getFuelSettings(),
+            getFuelEntries(),
+          ]);
 
-          if (!active) return;
+          if (!active) {
+            return;
+          }
 
           setFuelSettings(settings);
+
+          const efficiencyResult =
+            calculateFuelEfficiency(
+              fuelEntries
+            );
+
+          setMeasuredKmPerLitre(
+            efficiencyResult.estimatedKmPerLitre
+          );
+
           setFuelError(null);
         } catch (err) {
           console.error(
@@ -79,7 +108,9 @@ export default function HomeScreen() {
             err
           );
 
-          if (!active) return;
+          if (!active) {
+            return;
+          }
 
           setFuelError(
             err instanceof Error
@@ -109,8 +140,18 @@ export default function HomeScreen() {
   const estimatedFuelRemaining =
     fuelSettings?.estimatedFuelRemainingLitres ?? 0;
 
+  /*
+   * Measured fuel efficiency becomes the
+   * authoritative value once enough
+   * full-tank checkpoints exist.
+   *
+   * Until then, use the manually configured
+   * efficiency from Fuel Settings.
+   */
   const estimatedKmPerLitre =
-    fuelSettings?.estimatedKmPerLitre ?? 0;
+    measuredKmPerLitre ??
+    fuelSettings?.estimatedKmPerLitre ??
+    0;
 
   const fuelPercentage =
     tankCapacity > 0
@@ -135,7 +176,8 @@ export default function HomeScreen() {
       : 0;
 
   const displayHeading =
-    heading != null && Number.isFinite(heading)
+    heading != null &&
+    Number.isFinite(heading)
       ? Math.round(heading)
       : location?.heading != null
         ? Math.round(location.heading)
@@ -202,17 +244,21 @@ export default function HomeScreen() {
         ) : location ? (
           <>
             <Text style={styles.debugText}>
-              LAT: {location.latitude.toFixed(5)}
+              LAT:{" "}
+              {location.latitude.toFixed(5)}
             </Text>
 
             <Text style={styles.debugText}>
-              LNG: {location.longitude.toFixed(5)}
+              LNG:{" "}
+              {location.longitude.toFixed(5)}
             </Text>
 
             <Text style={styles.debugText}>
               ACCURACY:{" "}
               {location.accuracy != null
-                ? `${location.accuracy.toFixed(1)} m`
+                ? `${location.accuracy.toFixed(
+                    1
+                  )} m`
                 : "N/A"}
             </Text>
           </>
@@ -367,7 +413,9 @@ export default function HomeScreen() {
             </Text>
 
             <Text style={styles.rideStatValue}>
-              {Math.round(maxSpeedKmh)}
+              {Math.round(
+                maxSpeedKmh
+              )}
             </Text>
 
             <Text style={styles.rideStatUnit}>
@@ -377,20 +425,38 @@ export default function HomeScreen() {
         </View>
       )}
 
-      {/* Compass Test */}
-      <Pressable
-        style={({ pressed }) => [
-          styles.sqliteButton,
-          pressed && styles.buttonPressed,
-        ]}
-        onPress={() =>
-          router.push("/compass-test")
-        }
-      >
-        <Text style={styles.sqliteButtonText}>
-          COMPASS TEST
-        </Text>
-      </Pressable>
+      {/* Test Controls */}
+      <View style={styles.testControls}>
+        {/* Compass Test */}
+        <Pressable
+          style={({ pressed }) => [
+            styles.testButton,
+            pressed && styles.buttonPressed,
+          ]}
+          onPress={() =>
+            router.push("/compass-test")
+          }
+        >
+          <Text style={styles.testButtonText}>
+            COMPASS TEST
+          </Text>
+        </Pressable>
+
+        {/* Camera Test */}
+        <Pressable
+          style={({ pressed }) => [
+            styles.testButton,
+            pressed && styles.buttonPressed,
+          ]}
+          onPress={() =>
+            router.push("/camera-test")
+          }
+        >
+          <Text style={styles.testButtonText}>
+            CAMERA TEST
+          </Text>
+        </Pressable>
+      </View>
 
       {/* Navigation Controls */}
       <View style={styles.controls}>
@@ -693,23 +759,6 @@ const styles = StyleSheet.create({
     letterSpacing: 1.2,
   },
 
-  sqliteButton: {
-    marginTop: 10,
-    paddingHorizontal: 20,
-    paddingVertical: 9,
-    borderWidth: 1,
-    borderColor: "#333333",
-    borderRadius: 8,
-    alignSelf: "center",
-  },
-
-  sqliteButtonText: {
-    color: "#888888",
-    fontSize: 9,
-    fontWeight: "700",
-    letterSpacing: 1.2,
-  },
-
   buttonPressed: {
     opacity: 0.7,
   },
@@ -748,6 +797,28 @@ const styles = StyleSheet.create({
     color: "#666666",
     fontSize: 7,
     marginTop: 1,
+  },
+
+  testControls: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 10,
+    marginTop: 10,
+  },
+
+  testButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 9,
+    borderWidth: 1,
+    borderColor: "#333333",
+    borderRadius: 8,
+  },
+
+  testButtonText: {
+    color: "#888888",
+    fontSize: 9,
+    fontWeight: "700",
+    letterSpacing: 1.2,
   },
 
   controls: {

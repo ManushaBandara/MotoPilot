@@ -5,8 +5,13 @@ import {
 } from "./fuelCalculator";
 
 import {
+  getFuelEntries,
   saveFuelEntry,
 } from "./database";
+
+import {
+  calculateFuelEfficiency,
+} from "./fuelEfficiency";
 
 import {
   getFuelSettings,
@@ -20,6 +25,7 @@ export type AddFuelResult = {
   litresAdded: number;
   estimatedFuelRemainingLitres: number;
   estimatedRangeKm: number;
+  estimatedKmPerLitre: number;
 };
 
 export async function addFuelTransaction({
@@ -70,6 +76,12 @@ export async function addFuelTransaction({
     );
   }
 
+  /*
+   * Calculate the amount of fuel purchased.
+   *
+   * Example:
+   * Rs. 3000 / Rs. 300 per litre = 10 litres
+   */
   const litresAdded =
     calculateLitresFromSpending(
       amountSpent,
@@ -82,13 +94,13 @@ export async function addFuelTransaction({
     );
   }
 
-  const estimatedFuelRemaining =
-    addFuelToTank(
-      settings.estimatedFuelRemainingLitres,
-      litresAdded,
-      settings.tankCapacityLitres
-    );
-
+  /*
+   * Save the fuel transaction first.
+   *
+   * We do this before calculating measured
+   * efficiency because the new full-tank
+   * checkpoint needs to be included.
+   */
   const now =
     new Date().toISOString();
 
@@ -102,6 +114,46 @@ export async function addFuelTransaction({
     isFullTank,
   });
 
+  /*
+   * Reload all fuel entries and calculate
+   * measured efficiency from full-tank
+   * checkpoints.
+   */
+  const updatedFuelEntries =
+    await getFuelEntries();
+
+  const efficiencyResult =
+    calculateFuelEfficiency(
+      updatedFuelEntries
+    );
+
+  /*
+   * Measured efficiency is now authoritative
+   * whenever enough full-tank data exists.
+   *
+   * Until then, use the manually configured
+   * efficiency as the fallback.
+   */
+  const effectiveKmPerLitre =
+    efficiencyResult.estimatedKmPerLitre ??
+    settings.estimatedKmPerLitre;
+
+  /*
+   * A full-tank refuel means the estimated
+   * tank should now be considered full.
+   *
+   * Otherwise, add the purchased fuel to
+   * the current estimated fuel level.
+   */
+  const estimatedFuelRemaining =
+    isFullTank
+      ? settings.tankCapacityLitres
+      : addFuelToTank(
+          settings.estimatedFuelRemainingLitres,
+          litresAdded,
+          settings.tankCapacityLitres
+        );
+
   await updateCurrentFuelPrice(
     effectivePrice
   );
@@ -114,7 +166,7 @@ export async function addFuelTransaction({
   const estimatedRangeKm =
     calculateRemainingRange(
       estimatedFuelRemaining,
-      settings.estimatedKmPerLitre
+      effectiveKmPerLitre
     );
 
   return {
@@ -124,5 +176,7 @@ export async function addFuelTransaction({
     estimatedFuelRemainingLitres:
       estimatedFuelRemaining,
     estimatedRangeKm,
+    estimatedKmPerLitre:
+      effectiveKmPerLitre,
   };
 }

@@ -4,16 +4,18 @@ import {
   useRef,
   useState,
 } from "react";
+
 import {
   CameraView,
   useCameraPermissions,
+  useMicrophonePermissions,
 } from "expo-camera";
 
 import {
   addClipToQueue,
   findNewestRollingClip,
   getRollingClips,
-  protectClip,
+  removeClipFromQueue,
 } from "../services/camera/dashcamQueue";
 
 import {
@@ -24,6 +26,11 @@ import {
 } from "../services/camera/dashcamTypes";
 
 import {
+  getDashcamSettings,
+} from "../services/camera/dashcamSettings";
+
+import {
+  copyClipToSavedStorage,
   createRollingClipFile,
   deleteFile,
   getAvailableStorageBytes,
@@ -36,11 +43,23 @@ import {
   stopDashcamRecording,
 } from "../services/camera/dashcamRecorder";
 
+import type {
+  NativeLocation,
+} from "../../modules/motopilot-location/src/MotoPilotLocationModule";
+
+import {
+  deleteDashcamClip,
+  getDashcamClips,
+  saveDashcamClip,
+  updateDashcamClipFile,
+} from "../services/database";
+
 const MINIMUM_FREE_STORAGE_BYTES =
   1 * 1024 * 1024 * 1024;
 
 type UseDashcamOptions = {
   settings?: DashcamSettings;
+  location?: NativeLocation | null;
 };
 
 function createClipId(): string {
@@ -52,15 +71,35 @@ function createClipId(): string {
 export function useDashcam(
   options?: UseDashcamOptions
 ) {
-  const settings =
-    options?.settings ??
-    DEFAULT_DASHCAM_SETTINGS;
+  const location =
+    options?.location ?? null;
 
   const cameraRef =
     useRef<CameraView | null>(null);
 
+  const latestLocationRef =
+    useRef<NativeLocation | null>(
+      location
+    );
+
+  useEffect(() => {
+    latestLocationRef.current =
+      location;
+  }, [location]);
+
+  const [settings, setSettings] =
+    useState<DashcamSettings>(
+      options?.settings ??
+        DEFAULT_DASHCAM_SETTINGS
+    );
+
   const [permission, requestPermission] =
     useCameraPermissions();
+
+  const [
+    microphonePermission,
+    requestMicrophonePermission,
+  ] = useMicrophonePermissions();
 
   const [status, setStatus] =
     useState<DashcamStatus>("IDLE");
@@ -93,6 +132,105 @@ export function useDashcam(
   const recordingStartedAtRef =
     useRef<number | null>(null);
 
+  /* ============================================================
+     LOAD DASHCAM SETTINGS
+     ============================================================ */
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadSettings() {
+      try {
+        const savedSettings =
+          await getDashcamSettings();
+
+        if (!mounted) {
+          return;
+        }
+
+        setSettings(
+          options?.settings ??
+            savedSettings
+        );
+      } catch (err) {
+        console.error(
+          "Dashcam: failed to load settings:",
+          err
+        );
+
+        if (!mounted) {
+          return;
+        }
+
+        /*
+         * Keep the current defaults if
+         * settings cannot be loaded.
+         */
+        setSettings(
+          options?.settings ??
+            DEFAULT_DASHCAM_SETTINGS
+        );
+      }
+    }
+
+    loadSettings();
+
+    return () => {
+      mounted = false;
+    };
+  }, [options?.settings]);
+
+  /* ============================================================
+     LOAD SAVED CLIPS
+     ============================================================ */
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadDashcamClips() {
+      try {
+        const savedClips =
+          await getDashcamClips();
+
+        if (!mounted) {
+          return;
+        }
+
+        setClips(savedClips);
+
+        console.log(
+          "Dashcam: loaded clips from database:",
+          savedClips.length
+        );
+      } catch (err) {
+        console.error(
+          "Dashcam: failed to load clips from database:",
+          err
+        );
+
+        if (!mounted) {
+          return;
+        }
+
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Failed to load dashcam clips."
+        );
+      }
+    }
+
+    loadDashcamClips();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  /* ============================================================
+     LIFECYCLE
+     ============================================================ */
+
   useEffect(() => {
     mountedRef.current = true;
 
@@ -105,13 +243,10 @@ export function useDashcam(
     };
   }, []);
 
-  /*
-   * Live recording timer.
-   *
-   * Expo Camera does not provide a recording
-   * progress callback in this SDK version,
-   * so elapsed time is calculated locally.
-   */
+  /* ============================================================
+     RECORDING TIMER
+     ============================================================ */
+
   useEffect(() => {
     if (
       status !== "RECORDING" &&
@@ -120,30 +255,36 @@ export function useDashcam(
       return;
     }
 
-    const interval = setInterval(() => {
-      const startedAt =
-        recordingStartedAtRef.current;
+    const interval =
+      setInterval(() => {
+        const startedAt =
+          recordingStartedAtRef.current;
 
-      if (!startedAt) {
-        return;
-      }
+        if (!startedAt) {
+          return;
+        }
 
-      const elapsedSeconds =
-        (Date.now() - startedAt) / 1000;
+        const elapsedSeconds =
+          (Date.now() - startedAt) /
+          1000;
 
-      if (!mountedRef.current) {
-        return;
-      }
+        if (!mountedRef.current) {
+          return;
+        }
 
-      setRecordingDurationSeconds(
-        elapsedSeconds
-      );
-    }, 250);
+        setRecordingDurationSeconds(
+          elapsedSeconds
+        );
+      }, 250);
 
     return () => {
       clearInterval(interval);
     };
   }, [status]);
+
+  /* ============================================================
+     STORAGE
+     ============================================================ */
 
   const hasEnoughStorage =
     useCallback(() => {
@@ -153,16 +294,18 @@ export function useDashcam(
       );
     }, []);
 
-  /*
-   * Move the temporary Camera recording
-   * into permanent dashcam storage.
-   */
+  /* ============================================================
+     FINALIZE CLIP
+     ============================================================ */
+
   const finalizeClip =
     useCallback(
       (
         temporaryUri: string,
         startedAt: string,
-        durationSeconds: number
+        durationSeconds: number,
+        startLocation: NativeLocation | null,
+        endLocation: NativeLocation | null
       ): DashcamClip => {
         const clipId =
           createClipId();
@@ -174,125 +317,124 @@ export function useDashcam(
           );
 
         const actualFileSize =
-          getFileSize(destinationFile);
+          getFileSize(
+            destinationFile
+          );
 
         return {
           id: clipId,
-
           fileUri:
             destinationFile.uri,
-
           startedAt,
-
           endedAt:
             new Date().toISOString(),
-
           durationSeconds,
-
           fileSizeBytes:
             actualFileSize,
-
           status: "ROLLING",
 
-          startLatitude: null,
-          startLongitude: null,
+          startLatitude:
+            startLocation?.latitude ??
+            null,
 
-          endLatitude: null,
-          endLongitude: null,
+          startLongitude:
+            startLocation?.longitude ??
+            null,
+
+          endLatitude:
+            endLocation?.latitude ??
+            null,
+
+          endLongitude:
+            endLocation?.longitude ??
+            null,
         };
       },
       []
     );
 
-  /*
-   * Add the completed clip to the queue.
-   *
-   * The queue determines which old rolling
-   * clips are safe to remove.
-   */
+  /* ============================================================
+     ADD COMPLETED CLIP
+     ============================================================ */
+
   const addCompletedClip =
     useCallback(
-      (clip: DashcamClip) => {
-        let queueError: Error | null = null;
+      async (
+        clip: DashcamClip
+      ): Promise<void> => {
+        const result =
+          addClipToQueue(
+            clips,
+            clip,
+            settings.maxRollingClips,
+            settings.maxStorageBytes
+          );
 
-        setClips((currentClips) => {
-          const result =
-            addClipToQueue(
-              currentClips,
-              clip,
-              settings.maxRollingClips,
-              settings.maxStorageBytes
-            );
-
-          /*
-           * Physically delete the files selected
-           * by the queue.
-           */
-          for (
-            const clipToDelete of
-            result.clipsToDelete
-          ) {
-            try {
-              const oldFile =
-                createRollingClipFile(
-                  clipToDelete.id
-                );
-
-              deleteFile(oldFile);
-            } catch (deleteError) {
-              console.error(
-                "Dashcam: failed to delete old clip:",
-                deleteError
+        for (
+          const clipToDelete of
+          result.clipsToDelete
+        ) {
+          try {
+            const oldFile =
+              createRollingClipFile(
+                clipToDelete.id
               );
 
-              queueError =
-                deleteError instanceof Error
-                  ? deleteError
-                  : new Error(
-                      "Failed to delete an old dashcam clip."
-                    );
-            }
-          }
+            deleteFile(oldFile);
 
-          /*
-           * If deleting an old file failed,
-           * do not pretend the queue is safe.
-           */
-          if (queueError) {
-            return currentClips;
-          }
+            await deleteDashcamClip(
+              clipToDelete.id
+            );
 
-          /*
-           * If the rolling storage is still
-           * above the configured limit, every
-           * remaining rolling clip is effectively
-           * protected from automatic deletion.
-           *
-           * Stop the rolling process rather than
-           * allowing unlimited storage growth.
-           */
-          if (
-            result.storageLimitReached
-          ) {
-            console.warn(
-              "Dashcam: rolling storage limit reached."
+            console.log(
+              "Dashcam: deleted old clip:",
+              clipToDelete.id
+            );
+          } catch (deleteError) {
+            console.error(
+              "Dashcam: failed to delete old clip:",
+              deleteError
+            );
+
+            throw (
+              deleteError instanceof Error
+                ? deleteError
+                : new Error(
+                    "Failed to delete an old dashcam clip."
+                  )
             );
           }
+        }
 
-          return result.clips;
-        });
+        await saveDashcamClip(
+          clip
+        );
 
-        return queueError;
+        if (mountedRef.current) {
+          setClips(
+            result.clips
+          );
+        }
+
+        if (
+          result.storageLimitReached
+        ) {
+          console.warn(
+            "Dashcam: rolling storage limit reached."
+          );
+        }
       },
       [
+        clips,
         settings.maxRollingClips,
         settings.maxStorageBytes,
       ]
     );
 
-  /*
-   * Record one dashcam segment.
-   */
+  /* ============================================================
+     RECORD ONE CLIP
+     ============================================================ */
+
   const recordOneClip =
     useCallback(async () => {
       if (!cameraRef.current) {
@@ -301,6 +443,9 @@ export function useDashcam(
         );
       }
 
+      const startLocation =
+        latestLocationRef.current;
+
       const startedAt =
         new Date().toISOString();
 
@@ -308,8 +453,13 @@ export function useDashcam(
         Date.now();
 
       if (mountedRef.current) {
-        setRecordingDurationSeconds(0);
-        setRecordingFileSizeBytes(0);
+        setRecordingDurationSeconds(
+          0
+        );
+
+        setRecordingFileSizeBytes(
+          0
+        );
       }
 
       const result =
@@ -329,13 +479,20 @@ export function useDashcam(
         return false;
       }
 
-      setStatus("FINALIZING");
+      const endLocation =
+        latestLocationRef.current;
+
+      setStatus(
+        "FINALIZING"
+      );
 
       const clip =
         finalizeClip(
           result.uri,
           startedAt,
-          result.durationSeconds
+          result.durationSeconds,
+          startLocation,
+          endLocation
         );
 
       setRecordingDurationSeconds(
@@ -346,19 +503,10 @@ export function useDashcam(
         clip.fileSizeBytes
       );
 
-      const queueError =
-        addCompletedClip(clip);
+      await addCompletedClip(
+        clip
+      );
 
-      if (queueError) {
-        throw queueError;
-      }
-
-      /*
-       * If the newly recorded clip itself
-       * pushed storage above the configured
-       * limit and there were no deletable
-       * rolling clips, stop safely.
-       */
       const availableStorage =
         getAvailableStorageBytes();
 
@@ -378,20 +526,20 @@ export function useDashcam(
       addCompletedClip,
     ]);
 
-  /*
-   * Start continuous rolling recording.
-   */
+  /* ============================================================
+     START RECORDING
+     ============================================================ */
+
   const startRecording =
     useCallback(async () => {
-      if (recordingLoopRef.current) {
+      if (
+        recordingLoopRef.current
+      ) {
         return;
       }
 
       setError(null);
 
-      /*
-       * Request camera permission.
-       */
       if (!permission?.granted) {
         const result =
           await requestPermission();
@@ -407,9 +555,6 @@ export function useDashcam(
         }
       }
 
-      /*
-       * Check free device storage.
-       */
       if (!hasEnoughStorage()) {
         setError(
           "Not enough free storage to start dashcam recording."
@@ -430,11 +575,38 @@ export function useDashcam(
         return;
       }
 
-      recordingLoopRef.current = true;
-      stopRequestedRef.current = false;
+      if (settings.audioEnabled) {
+        if (
+          !microphonePermission?.granted
+        ) {
+          const result =
+            await requestMicrophonePermission();
 
-      setRecordingDurationSeconds(0);
-      setRecordingFileSizeBytes(0);
+          if (!result.granted) {
+            setError(
+              "Microphone permission is required when dashcam audio is enabled."
+            );
+
+            setStatus("ERROR");
+
+            return;
+          }
+        }
+      }
+
+      recordingLoopRef.current =
+        true;
+
+      stopRequestedRef.current =
+        false;
+
+      setRecordingDurationSeconds(
+        0
+      );
+
+      setRecordingFileSizeBytes(
+        0
+      );
 
       setStatus("STARTING");
 
@@ -443,10 +615,6 @@ export function useDashcam(
           recordingLoopRef.current &&
           !stopRequestedRef.current
         ) {
-          /*
-           * Check device storage before
-           * starting every new segment.
-           */
           if (!hasEnoughStorage()) {
             throw new Error(
               "Free storage is too low. Dashcam recording was stopped."
@@ -454,7 +622,9 @@ export function useDashcam(
           }
 
           if (mountedRef.current) {
-            setStatus("RECORDING");
+            setStatus(
+              "RECORDING"
+            );
           }
 
           const recorded =
@@ -472,7 +642,9 @@ export function useDashcam(
           }
 
           if (mountedRef.current) {
-            setStatus("ROTATING");
+            setStatus(
+              "ROTATING"
+            );
           }
         }
 
@@ -488,7 +660,9 @@ export function useDashcam(
           err
         );
 
-        recordingLoopRef.current = false;
+        recordingLoopRef.current =
+          false;
+
         recordingStartedAtRef.current =
           null;
 
@@ -505,13 +679,17 @@ export function useDashcam(
     }, [
       permission?.granted,
       requestPermission,
+      microphonePermission?.granted,
+      requestMicrophonePermission,
       hasEnoughStorage,
       recordOneClip,
+      settings.audioEnabled,
     ]);
 
-  /*
-   * Stop the current recording.
-   */
+  /* ============================================================
+     STOP RECORDING
+     ============================================================ */
+
   const stopRecording =
     useCallback(() => {
       if (
@@ -520,8 +698,11 @@ export function useDashcam(
         return;
       }
 
-      stopRequestedRef.current = true;
-      recordingLoopRef.current = false;
+      stopRequestedRef.current =
+        true;
+
+      recordingLoopRef.current =
+        false;
 
       if (mountedRef.current) {
         setStatus("STOPPING");
@@ -532,38 +713,102 @@ export function useDashcam(
       );
     }, []);
 
-  /*
-   * Protect the newest rolling clip.
-   *
-   * Protected clips will never be selected
-   * for automatic rolling-buffer deletion.
-   */
-  const quickSave =
-    useCallback(() => {
-      setClips((currentClips) => {
-        const newest =
-          findNewestRollingClip(
-            currentClips
-          );
+  /* ============================================================
+     QUICK SAVE
+     ============================================================ */
 
-        if (!newest) {
-          return currentClips;
+  const quickSave =
+    useCallback(async () => {
+      const newest =
+        findNewestRollingClip(
+          clips
+        );
+
+      if (!newest) {
+        return;
+      }
+
+      try {
+        const availableStorage =
+          getAvailableStorageBytes();
+
+        if (
+          availableStorage <=
+          MINIMUM_FREE_STORAGE_BYTES
+        ) {
+          throw new Error(
+            "Not enough free storage to save this clip."
+          );
         }
 
-        return protectClip(
-          currentClips,
+        const savedFile =
+          copyClipToSavedStorage(
+            newest.fileUri,
+            newest.id
+          );
+
+        console.log(
+          "Dashcam: clip copied to saved storage:",
+          savedFile.uri
+        );
+
+        await updateDashcamClipFile(
+          newest.id,
+          savedFile.uri,
+          "SAVED"
+        );
+
+        const rollingFile =
+          createRollingClipFile(
+            newest.id
+          );
+
+        deleteFile(
+          rollingFile
+        );
+
+        if (mountedRef.current) {
+          setClips(
+            (currentClips) =>
+              removeClipFromQueue(
+                currentClips,
+                newest.id
+              )
+          );
+        }
+
+        console.log(
+          "Dashcam: clip permanently saved:",
           newest.id
         );
-      });
-    }, []);
+      } catch (err) {
+        console.error(
+          "Dashcam: failed to save clip:",
+          err
+        );
 
-  /*
-   * Cleanup camera recording on unmount.
-   */
+        if (mountedRef.current) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Failed to save dashcam clip."
+          );
+        }
+      }
+    }, [clips]);
+
+  /* ============================================================
+     CLEANUP
+     ============================================================ */
+
   useEffect(() => {
     return () => {
-      recordingLoopRef.current = false;
-      stopRequestedRef.current = true;
+      recordingLoopRef.current =
+        false;
+
+      stopRequestedRef.current =
+        true;
+
       recordingStartedAtRef.current =
         null;
 
@@ -580,14 +825,19 @@ export function useDashcam(
     };
   }, []);
 
+  /* ============================================================
+     ROLLING CLIPS
+     ============================================================ */
+
   const rollingClips =
     getRollingClips(clips);
 
   return {
     cameraRef,
-
     permission,
     requestPermission,
+
+    settings,
 
     status,
     error,
@@ -609,7 +859,6 @@ export function useDashcam(
 
     startRecording,
     stopRecording,
-
     quickSave,
   };
 }

@@ -7,11 +7,9 @@
     "icon": "./assets/images/icon.png",
     "scheme": "motopilot",
     "userInterfaceStyle": "automatic",
-
     "ios": {
       "icon": "./assets/expo.icon"
     },
-
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
@@ -20,17 +18,18 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.scooby_kia.MotoPilot"
+      "package": "com.scooby_kia.MotoPilot",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
-
     "web": {
       "output": "static",
       "favicon": "./assets/images/favicon.png"
     },
-
     "plugins": [
       "expo-router",
-
       [
         "expo-splash-screen",
         {
@@ -39,17 +38,16 @@
           "imageWidth": 76
         }
       ],
-
       "expo-sqlite",
       "expo-camera",
-      "expo-sensors"
+      "expo-sensors",
+      "expo-video",
+      "expo-media-library"
     ],
-
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
     },
-
     "extra": {
       "router": {},
       "eas": {

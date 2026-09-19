@@ -1,231 +1,1107 @@
-import { useEffect, useState } from "react";
 import {
+  CameraView,
+} from "expo-camera";
+
+import {
+  useVideoPlayer,
+  VideoView,
+} from "expo-video";
+
+import {
+  File,
+} from "expo-file-system";
+
+import {
+  Alert,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 
 import {
-  getDatabase,
-  getRides,
-  saveRide,
-  Ride,
+  useState,
+} from "react";
+
+import {
+  useDashcam,
+} from "../hooks/useDashcam";
+
+import {
+  useLocation,
+} from "../hooks/useLocation";
+
+import {
+  deleteDashcamClip,
 } from "../services/database";
 
-export default function CameraTestScreen() {
-  const [message, setMessage] = useState(
-    "SQLite test ready."
-  );
+import {
+  exportDashcamClipToGallery,
+} from "../services/camera/dashcamGallery";
 
-  const [rides, setRides] = useState<Ride[]>([]);
+import type {
+  DashcamClip,
+} from "../services/camera/dashcamTypes";
 
-  const [loading, setLoading] = useState(false);
+/* ============================================================
+   HELPERS
+   ============================================================ */
 
-  async function handleTestDatabase() {
-    try {
-      setLoading(true);
-      setMessage("Opening SQLite database...");
+function formatDuration(
+  seconds: number
+): string {
+  const totalSeconds =
+    Math.floor(seconds);
 
-      await getDatabase();
+  const minutes =
+    Math.floor(totalSeconds / 60);
 
-      setMessage(
-        "Database opened successfully."
-      );
+  const remainingSeconds =
+    totalSeconds % 60;
 
-      await saveRide({
-        startedAt: new Date().toISOString(),
-        durationSeconds: 60,
-        distanceKm: 1.5,
-        averageSpeedKmh: 45,
-        maxSpeedKmh: 62,
-      });
+  return `${minutes
+    .toString()
+    .padStart(2, "0")}:${remainingSeconds
+    .toString()
+    .padStart(2, "0")}`;
+}
 
-      setMessage(
-        "Test ride saved successfully."
-      );
-
-      const savedRides =
-        await getRides();
-
-      setRides(savedRides);
-
-      setMessage(
-        `SQLite works. ${savedRides.length} ride(s) found.`
-      );
-    } catch (error) {
-      console.error(
-        "SQLite test failed:",
-        error
-      );
-
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : "SQLite test failed."
-      );
-    } finally {
-      setLoading(false);
-    }
+function formatFileSize(
+  bytes: number
+): string {
+  if (bytes < 1024) {
+    return `${bytes} B`;
   }
 
-  useEffect(() => {
-    async function checkDatabase() {
-      try {
-        await getDatabase();
+  const kilobytes =
+    bytes / 1024;
 
-        const existingRides =
-          await getRides();
+  if (kilobytes < 1024) {
+    return `${kilobytes.toFixed(1)} KB`;
+  }
 
-        setRides(existingRides);
+  const megabytes =
+    kilobytes / 1024;
 
-        setMessage(
-          `Database opened. ${existingRides.length} ride(s) currently stored.`
-        );
-      } catch (error) {
-        console.error(
-          "SQLite initialization failed:",
-          error
-        );
+  if (megabytes < 1024) {
+    return `${megabytes.toFixed(1)} MB`;
+  }
 
-        setMessage(
-          error instanceof Error
-            ? error.message
-            : "Unable to open SQLite."
-        );
+  const gigabytes =
+    megabytes / 1024;
+
+  return `${gigabytes.toFixed(2)} GB`;
+}
+
+function formatDate(
+  dateString: string
+): string {
+  const date =
+    new Date(dateString);
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return dateString;
+  }
+
+  return date.toLocaleString();
+}
+
+/* ============================================================
+   SAVED CLIP PLAYER
+   ============================================================ */
+
+function SavedClipPlayer({
+  clip,
+  onClose,
+}: {
+  clip: DashcamClip;
+  onClose: () => void;
+}) {
+  const player =
+    useVideoPlayer(
+      clip.fileUri,
+      (player) => {
+        player.loop = false;
       }
-    }
-
-    checkDatabase();
-  }, []);
+    );
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>
-        SQLite Test
-      </Text>
+    <View
+      style={
+        styles.playerContainer
+      }
+    >
+      <VideoView
+        player={player}
+        style={styles.videoPlayer}
+        nativeControls
+        contentFit="contain"
+      />
 
-      <Text style={styles.status}>
-        {message}
-      </Text>
+      <View
+        style={styles.playerInfo}
+      >
+        <Text
+          style={styles.playerTitle}
+        >
+          Saved Clip
+        </Text>
+
+        <Text
+          style={
+            styles.playerDetails
+          }
+        >
+          {formatDate(
+            clip.startedAt
+          )}
+        </Text>
+
+        <Text
+          style={
+            styles.playerDetails
+          }
+        >
+          Duration:{" "}
+          {formatDuration(
+            clip.durationSeconds
+          )}
+        </Text>
+
+        <Text
+          style={
+            styles.playerDetails
+          }
+        >
+          Size:{" "}
+          {formatFileSize(
+            clip.fileSizeBytes
+          )}
+        </Text>
+      </View>
 
       <Pressable
-        style={[
-          styles.button,
-          loading && styles.disabledButton,
-        ]}
-        onPress={handleTestDatabase}
-        disabled={loading}
+        style={
+          styles.closePlayerButton
+        }
+        onPress={onClose}
       >
-        <Text style={styles.buttonText}>
-          {loading
-            ? "Testing..."
-            : "Test SQLite"}
+        <Text
+          style={styles.buttonText}
+        >
+          Close Preview
         </Text>
       </Pressable>
+    </View>
+  );
+}
 
-      <View style={styles.results}>
-        <Text style={styles.resultsTitle}>
-          Stored Rides
+/* ============================================================
+   CAMERA TEST SCREEN
+   ============================================================ */
+
+export default function CameraTestScreen() {
+  const {
+    location,
+  } = useLocation();
+
+  const {
+    cameraRef,
+
+    permission,
+    requestPermission,
+
+    status,
+    error,
+
+    rollingClips,
+    clips,
+
+    recordingDurationSeconds,
+
+    isRecording,
+    isStarting,
+    isStopping,
+
+    startRecording,
+    stopRecording,
+
+    quickSave,
+  } = useDashcam({
+    location,
+  });
+
+  const [
+    selectedClip,
+    setSelectedClip,
+  ] = useState<DashcamClip | null>(
+    null
+  );
+
+  const [
+    deletedClipIds,
+    setDeletedClipIds,
+  ] = useState<Set<string>>(
+    new Set()
+  );
+
+  /* ============================================================
+     SAVED CLIPS
+     ============================================================ */
+
+  const savedClips =
+    clips.filter(
+      (clip) =>
+        clip.status === "SAVED" &&
+        !deletedClipIds.has(
+          clip.id
+        )
+    );
+
+  /* ============================================================
+     DELETE SAVED CLIP
+     ============================================================ */
+
+  const deleteSavedClip = (
+    clip: DashcamClip
+  ) => {
+    Alert.alert(
+      "Delete saved clip?",
+      "This video will be permanently deleted from MotoPilot.",
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const file =
+                new File(
+                  clip.fileUri
+                );
+
+              if (file.exists) {
+                file.delete();
+              }
+
+              await deleteDashcamClip(
+                clip.id
+              );
+
+              setDeletedClipIds(
+                (previous) => {
+                  const updated =
+                    new Set(
+                      previous
+                    );
+
+                  updated.add(
+                    clip.id
+                  );
+
+                  return updated;
+                }
+              );
+
+              if (
+                selectedClip?.id ===
+                clip.id
+              ) {
+                setSelectedClip(
+                  null
+                );
+              }
+
+              console.log(
+                "Dashcam: saved clip deleted:",
+                clip.id
+              );
+            } catch (err) {
+              console.error(
+                "Dashcam: failed to delete saved clip:",
+                err
+              );
+
+              Alert.alert(
+                "Delete failed",
+                err instanceof Error
+                  ? err.message
+                  : "Failed to delete the saved clip."
+              );
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  /* ============================================================
+     EXPORT SAVED CLIP TO GALLERY
+     ============================================================ */
+
+  const exportSavedClip = (
+    clip: DashcamClip
+  ) => {
+    Alert.alert(
+      "Export to Gallery?",
+      "A copy of this video will be saved to the MotoPilot album in your Gallery.",
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+        {
+          text: "Export",
+          onPress: async () => {
+            try {
+              await exportDashcamClipToGallery(
+                clip.fileUri
+              );
+
+              Alert.alert(
+                "Export complete",
+                "The clip has been copied to the MotoPilot album in your Gallery."
+              );
+            } catch (err) {
+              console.error(
+                "Dashcam: failed to export clip:",
+                err
+              );
+
+              Alert.alert(
+                "Export failed",
+                err instanceof Error
+                  ? err.message
+                  : "Failed to export the clip to the Gallery."
+              );
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  /* ============================================================
+     PERMISSION CHECKING
+     ============================================================ */
+
+  if (!permission) {
+    return (
+      <View
+        style={styles.center}
+      >
+        <Text
+          style={styles.text}
+        >
+          Checking camera permission...
+        </Text>
+      </View>
+    );
+  }
+
+  if (!permission.granted) {
+    return (
+      <View
+        style={styles.center}
+      >
+        <Text
+          style={styles.title}
+        >
+          Camera Permission
         </Text>
 
-        {rides.length === 0 ? (
-          <Text style={styles.text}>
-            No rides stored.
+        <Text
+          style={styles.text}
+        >
+          MotoPilot needs camera access
+          for dashcam recording.
+        </Text>
+
+        <Pressable
+          style={styles.button}
+          onPress={
+            requestPermission
+          }
+        >
+          <Text
+            style={styles.buttonText}
+          >
+            Allow Camera
           </Text>
-        ) : (
-          rides.map((ride) => (
-            <View
-              key={ride.id}
-              style={styles.ride}
+        </Pressable>
+      </View>
+    );
+  }
+
+  /* ============================================================
+     VIDEO PLAYER
+     ============================================================ */
+
+  if (selectedClip) {
+    return (
+      <SavedClipPlayer
+        clip={selectedClip}
+        onClose={() =>
+          setSelectedClip(null)
+        }
+      />
+    );
+  }
+
+  /* ============================================================
+     MAIN CAMERA VIEW
+     ============================================================ */
+
+  return (
+    <View
+      style={styles.container}
+    >
+      <CameraView
+        ref={cameraRef}
+        style={styles.camera}
+        facing="back"
+        mode="video"
+      />
+
+      <View
+        style={styles.overlay}
+      >
+        {/* ======================================================
+            STATUS
+            ====================================================== */}
+
+        <View
+          style={styles.statusBar}
+        >
+          <Text
+            style={styles.statusText}
+          >
+            {status}
+          </Text>
+
+          {isRecording && (
+            <Text
+              style={
+                styles.recordingText
+              }
             >
-              <Text style={styles.text}>
-                Ride #{ride.id}
-              </Text>
+              ● REC
+            </Text>
+          )}
+        </View>
 
-              <Text style={styles.text}>
-                Distance:{" "}
-                {ride.distanceKm} km
-              </Text>
+        {/* ======================================================
+            RECORDING TIMER
+            ====================================================== */}
 
-              <Text style={styles.text}>
-                Average:{" "}
-                {ride.averageSpeedKmh} km/h
-              </Text>
-
-              <Text style={styles.text}>
-                Maximum:{" "}
-                {ride.maxSpeedKmh} km/h
-              </Text>
-            </View>
-          ))
+        {isRecording && (
+          <View
+            style={
+              styles.durationContainer
+            }
+          >
+            <Text
+              style={styles.duration}
+            >
+              {formatDuration(
+                recordingDurationSeconds
+              )}
+            </Text>
+          </View>
         )}
+
+        {/* ======================================================
+            BOTTOM AREA
+            ====================================================== */}
+
+        <View
+          style={styles.bottomArea}
+        >
+          {/* ====================================================
+              CONTROLS
+              ==================================================== */}
+
+          <View
+            style={styles.controls}
+          >
+            {!isRecording &&
+            !isStarting &&
+            !isStopping ? (
+              <Pressable
+                style={
+                  styles.recordButton
+                }
+                onPress={
+                  startRecording
+                }
+              >
+                <Text
+                  style={
+                    styles.buttonText
+                  }
+                >
+                  Start Dashcam
+                </Text>
+              </Pressable>
+            ) : (
+              <Pressable
+                style={[
+                  styles.stopButton,
+                  isStopping &&
+                    styles.disabledButton,
+                ]}
+                onPress={
+                  stopRecording
+                }
+                disabled={
+                  isStopping
+                }
+              >
+                <Text
+                  style={
+                    styles.buttonText
+                  }
+                >
+                  {isStopping
+                    ? "Stopping..."
+                    : "Stop Dashcam"}
+                </Text>
+              </Pressable>
+            )}
+
+            <Pressable
+              style={[
+                styles.saveButton,
+                !rollingClips.length &&
+                  styles.disabledButton,
+              ]}
+              onPress={quickSave}
+              disabled={
+                !rollingClips.length
+              }
+            >
+              <Text
+                style={
+                  styles.buttonText
+                }
+              >
+                Save Latest Clip
+              </Text>
+            </Pressable>
+          </View>
+
+          {/* ====================================================
+              STATUS INFORMATION
+              ==================================================== */}
+
+          <View
+            style={styles.info}
+          >
+            <Text
+              style={styles.infoText}
+            >
+              Rolling clips:{" "}
+              {rollingClips.length}
+            </Text>
+
+            <Text
+              style={styles.infoText}
+            >
+              Saved clips:{" "}
+              {savedClips.length}
+            </Text>
+
+            <Text
+              style={styles.infoText}
+            >
+              Status: {status}
+            </Text>
+
+            {error && (
+              <Text
+                style={
+                  styles.errorText
+                }
+              >
+                {error}
+              </Text>
+            )}
+          </View>
+
+          {/* ====================================================
+              SAVED CLIPS
+              ==================================================== */}
+
+          <View
+            style={
+              styles.savedClipsContainer
+            }
+          >
+            <Text
+              style={
+                styles.savedClipsTitle
+              }
+            >
+              Saved Clips
+            </Text>
+
+            {savedClips.length ===
+            0 ? (
+              <Text
+                style={
+                  styles.emptyText
+                }
+              >
+                No saved clips yet.
+              </Text>
+            ) : (
+              <ScrollView
+                style={
+                  styles.savedClipsList
+                }
+                contentContainerStyle={
+                  styles.savedClipsContent
+                }
+              >
+                {savedClips.map(
+                  (clip) => (
+                    <View
+                      key={clip.id}
+                      style={
+                        styles.clipItem
+                      }
+                    >
+                      <View
+                        style={
+                          styles.clipDetails
+                        }
+                      >
+                        <Text
+                          style={
+                            styles.clipTitle
+                          }
+                        >
+                          Dashcam Clip
+                        </Text>
+
+                        <Text
+                          style={
+                            styles.clipText
+                          }
+                        >
+                          {formatDate(
+                            clip.startedAt
+                          )}
+                        </Text>
+
+                        <Text
+                          style={
+                            styles.clipText
+                          }
+                        >
+                          Duration:{" "}
+                          {formatDuration(
+                            clip.durationSeconds
+                          )}
+                        </Text>
+
+                        <Text
+                          style={
+                            styles.clipText
+                          }
+                        >
+                          Size:{" "}
+                          {formatFileSize(
+                            clip.fileSizeBytes
+                          )}
+                        </Text>
+                      </View>
+
+                      <View
+                        style={
+                          styles.clipActions
+                        }
+                      >
+                        <Pressable
+                          style={
+                            styles.playButton
+                          }
+                          onPress={() =>
+                            setSelectedClip(
+                              clip
+                            )
+                          }
+                        >
+                          <Text
+                            style={
+                              styles.buttonText
+                            }
+                          >
+                            Play
+                          </Text>
+                        </Pressable>
+
+                        <Pressable
+                          style={
+                            styles.exportButton
+                          }
+                          onPress={() =>
+                            exportSavedClip(
+                              clip
+                            )
+                          }
+                        >
+                          <Text
+                            style={
+                              styles.buttonText
+                            }
+                          >
+                            Export
+                          </Text>
+                        </Pressable>
+
+                        <Pressable
+                          style={
+                            styles.deleteButton
+                          }
+                          onPress={() =>
+                            deleteSavedClip(
+                              clip
+                            )
+                          }
+                        >
+                          <Text
+                            style={
+                              styles.buttonText
+                            }
+                          >
+                            Delete
+                          </Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  )
+                )}
+              </ScrollView>
+            )}
+          </View>
+        </View>
       </View>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#050505",
-    padding: 24,
-    paddingTop: 60,
-  },
+/* ============================================================
+   STYLES
+   ============================================================ */
 
-  title: {
-    color: "#fff",
-    fontSize: 28,
-    fontWeight: "700",
-    marginBottom: 20,
-  },
+const styles =
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: "#000",
+    },
 
-  status: {
-    color: "#fff",
-    fontSize: 15,
-    lineHeight: 22,
-    marginBottom: 24,
-  },
+    camera: {
+      flex: 1,
+    },
 
-  button: {
-    minHeight: 52,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    backgroundColor: "#d42b4e",
-  },
+    overlay: {
+      ...StyleSheet.absoluteFill,
+      justifyContent:
+        "space-between",
+      padding: 20,
+      paddingTop: 55,
+      paddingBottom: 35,
+    },
 
-  disabledButton: {
-    opacity: 0.5,
-  },
+    statusBar: {
+      flexDirection: "row",
+      justifyContent:
+        "space-between",
+      alignItems: "center",
+    },
 
-  buttonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
-  },
+    statusText: {
+      color: "#fff",
+      fontSize: 14,
+      fontWeight: "700",
+      letterSpacing: 1,
+    },
 
-  results: {
-    marginTop: 32,
-  },
+    recordingText: {
+      color: "#ff3333",
+      fontSize: 14,
+      fontWeight: "800",
+      letterSpacing: 1,
+    },
 
-  resultsTitle: {
-    color: "#fff",
-    fontSize: 20,
-    fontWeight: "600",
-    marginBottom: 16,
-  },
+    durationContainer: {
+      alignItems: "center",
+    },
 
-  ride: {
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#333",
-  },
+    duration: {
+      color: "#fff",
+      fontSize: 32,
+      fontWeight: "700",
+      letterSpacing: 2,
+    },
 
-  text: {
-    color: "#ccc",
-    fontSize: 14,
-    marginBottom: 5,
-  },
-});
+    bottomArea: {
+      gap: 12,
+    },
+
+    controls: {
+      gap: 12,
+    },
+
+    recordButton: {
+      minHeight: 54,
+      alignItems: "center",
+      justifyContent:
+        "center",
+      borderRadius: 12,
+      backgroundColor:
+        "#d42b4e",
+    },
+
+    stopButton: {
+      minHeight: 54,
+      alignItems: "center",
+      justifyContent:
+        "center",
+      borderRadius: 12,
+      backgroundColor:
+        "#444",
+    },
+
+    saveButton: {
+      minHeight: 48,
+      alignItems: "center",
+      justifyContent:
+        "center",
+      borderRadius: 12,
+      backgroundColor:
+        "rgba(0,0,0,0.75)",
+      borderWidth: 1,
+      borderColor: "#555",
+    },
+
+    disabledButton: {
+      opacity: 0.45,
+    },
+
+    buttonText: {
+      color: "#fff",
+      fontSize: 15,
+      fontWeight: "700",
+    },
+
+    info: {
+      padding: 12,
+      borderRadius: 10,
+      backgroundColor:
+        "rgba(0,0,0,0.7)",
+    },
+
+    infoText: {
+      color: "#ddd",
+      fontSize: 13,
+      marginBottom: 4,
+    },
+
+    errorText: {
+      color: "#ff6b6b",
+      fontSize: 13,
+      marginTop: 6,
+    },
+
+    savedClipsContainer: {
+      maxHeight: 220,
+      padding: 12,
+      borderRadius: 12,
+      backgroundColor:
+        "rgba(0,0,0,0.82)",
+    },
+
+    savedClipsTitle: {
+      color: "#fff",
+      fontSize: 16,
+      fontWeight: "700",
+      marginBottom: 8,
+    },
+
+    savedClipsList: {
+      maxHeight: 170,
+    },
+
+    savedClipsContent: {
+      gap: 8,
+    },
+
+    emptyText: {
+      color: "#aaa",
+      fontSize: 13,
+    },
+
+    clipItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent:
+        "space-between",
+      padding: 10,
+      borderRadius: 10,
+      backgroundColor:
+        "rgba(255,255,255,0.08)",
+    },
+
+    clipDetails: {
+      flex: 1,
+      marginRight: 10,
+    },
+
+    clipTitle: {
+      color: "#fff",
+      fontSize: 14,
+      fontWeight: "700",
+      marginBottom: 3,
+    },
+
+    clipText: {
+      color: "#bbb",
+      fontSize: 11,
+      marginBottom: 2,
+    },
+
+    clipActions: {
+      gap: 8,
+    },
+
+    playButton: {
+      minWidth: 70,
+      minHeight: 40,
+      paddingHorizontal: 12,
+      alignItems: "center",
+      justifyContent:
+        "center",
+      borderRadius: 8,
+      backgroundColor:
+        "#d42b4e",
+    },
+
+    exportButton: {
+      minWidth: 70,
+      minHeight: 40,
+      paddingHorizontal: 12,
+      alignItems: "center",
+      justifyContent:
+        "center",
+      borderRadius: 8,
+      backgroundColor:
+        "#333",
+    },
+
+    deleteButton: {
+      minWidth: 70,
+      minHeight: 40,
+      paddingHorizontal: 12,
+      alignItems: "center",
+      justifyContent:
+        "center",
+      borderRadius: 8,
+      backgroundColor:
+        "#552222",
+    },
+
+    center: {
+      flex: 1,
+      backgroundColor:
+        "#050505",
+      alignItems: "center",
+      justifyContent:
+        "center",
+      padding: 24,
+    },
+
+    title: {
+      color: "#fff",
+      fontSize: 26,
+      fontWeight: "700",
+      marginBottom: 16,
+    },
+
+    text: {
+      color: "#ccc",
+      fontSize: 15,
+      lineHeight: 22,
+      textAlign: "center",
+      marginBottom: 24,
+    },
+
+    button: {
+      minHeight: 52,
+      paddingHorizontal: 28,
+      alignItems: "center",
+      justifyContent:
+        "center",
+      borderRadius: 12,
+      backgroundColor:
+        "#d42b4e",
+    },
+
+    playerContainer: {
+      flex: 1,
+      backgroundColor:
+        "#000",
+      justifyContent:
+        "center",
+      padding: 20,
+    },
+
+    videoPlayer: {
+      width: "100%",
+      height: 300,
+      backgroundColor:
+        "#050505",
+    },
+
+    playerInfo: {
+      marginTop: 20,
+      padding: 14,
+      borderRadius: 12,
+      backgroundColor:
+        "#111",
+    },
+
+    playerTitle: {
+      color: "#fff",
+      fontSize: 18,
+      fontWeight: "700",
+      marginBottom: 6,
+    },
+
+    playerDetails: {
+      color: "#aaa",
+      fontSize: 13,
+      marginBottom: 3,
+    },
+
+    closePlayerButton: {
+      marginTop: 16,
+      minHeight: 50,
+      alignItems: "center",
+      justifyContent:
+        "center",
+      borderRadius: 12,
+      backgroundColor:
+        "#333",
+    },
+  });

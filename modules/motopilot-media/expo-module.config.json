@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android", "web"],
+  "apple": {
+    "modules": ["MotoPilotMediaModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.motopilotmedia.MotoPilotMediaModule"]
+  }
+}

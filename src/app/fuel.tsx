@@ -34,6 +34,10 @@ import {
   calculateRemainingRange,
 } from "../services/fuelCalculator";
 
+import {
+  calculateFuelEfficiency,
+} from "../services/fuelEfficiency";
+
 const MONTH_NAMES = [
   "January",
   "February",
@@ -49,7 +53,10 @@ const MONTH_NAMES = [
   "December",
 ];
 
-function formatNumber(value: number, decimals = 1): string {
+function formatNumber(
+  value: number,
+  decimals = 1
+): string {
   if (!Number.isFinite(value)) {
     return "0";
   }
@@ -57,7 +64,9 @@ function formatNumber(value: number, decimals = 1): string {
   return value.toFixed(decimals);
 }
 
-function formatDate(dateString: string): string {
+function formatDate(
+  dateString: string
+): string {
   const date = new Date(dateString);
 
   if (Number.isNaN(date.getTime())) {
@@ -67,7 +76,9 @@ function formatDate(dateString: string): string {
   return date.toLocaleDateString();
 }
 
-function formatTime(dateString: string): string {
+function formatTime(
+  dateString: string
+): string {
   const date = new Date(dateString);
 
   if (Number.isNaN(date.getTime())) {
@@ -83,35 +94,66 @@ function formatTime(dateString: string): string {
 export default function FuelScreen() {
   const now = new Date();
 
-  const [selectedYear, setSelectedYear] = useState(now.getFullYear());
-  const [selectedMonth, setSelectedMonth] = useState(now.getMonth());
+  const [selectedYear, setSelectedYear] =
+    useState(now.getFullYear());
 
-  const [settings, setSettings] = useState<FuelSettings | null>(null);
-  const [fuelEntries, setFuelEntries] = useState<FuelEntry[]>([]);
-  const [analytics, setAnalytics] = useState<Awaited<
-    ReturnType<typeof getMonthlyFuelAnalytics>
-  > | null>(null);
+  const [selectedMonth, setSelectedMonth] =
+    useState(now.getMonth());
 
-  const [tankCapacityInput, setTankCapacityInput] = useState("");
-  const [fuelPriceInput, setFuelPriceInput] = useState("");
-  const [kmPerLitreInput, setKmPerLitreInput] = useState("");
+  const [settings, setSettings] =
+    useState<FuelSettings | null>(null);
 
-  const [amountSpentInput, setAmountSpentInput] = useState("");
-  const [refuelPriceInput, setRefuelPriceInput] = useState("");
-  const [odometerInput, setOdometerInput] = useState("");
-  const [isFullTank, setIsFullTank] = useState(false);
+  const [fuelEntries, setFuelEntries] =
+    useState<FuelEntry[]>([]);
 
-  const [loading, setLoading] = useState(true);
-  const [savingSettings, setSavingSettings] = useState(false);
-  const [addingFuel, setAddingFuel] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [analytics, setAnalytics] =
+    useState<
+      Awaited<
+        ReturnType<
+          typeof getMonthlyFuelAnalytics
+        >
+      > | null
+    >(null);
+
+  const [tankCapacityInput, setTankCapacityInput] =
+    useState("");
+
+  const [fuelPriceInput, setFuelPriceInput] =
+    useState("");
+
+  const [kmPerLitreInput, setKmPerLitreInput] =
+    useState("");
+
+  const [amountSpentInput, setAmountSpentInput] =
+    useState("");
+
+  const [refuelPriceInput, setRefuelPriceInput] =
+    useState("");
+
+  const [odometerInput, setOdometerInput] =
+    useState("");
+
+  const [isFullTank, setIsFullTank] =
+    useState(false);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [savingSettings, setSavingSettings] =
+    useState(false);
+
+  const [addingFuel, setAddingFuel] =
+    useState(false);
+
+  const [error, setError] =
+    useState<string | null>(null);
 
   /*
    * Initial data loading.
    *
-   * The eslint rule for setState-in-effect is disabled for this
-   * initialization effect because these state updates are the result
-   * of reading the local SQLite database.
+   * The eslint rule for setState-in-effect is
+   * disabled because these state updates are the
+   * result of reading the local SQLite database.
    */
   useEffect(() => {
     let mounted = true;
@@ -120,12 +162,18 @@ export default function FuelScreen() {
       try {
         setError(null);
 
-        const [loadedSettings, loadedEntries, loadedAnalytics] =
-          await Promise.all([
-            getFuelSettings(),
-            getFuelEntries(),
-            getMonthlyFuelAnalytics(selectedYear, selectedMonth),
-          ]);
+        const [
+          loadedSettings,
+          loadedEntries,
+          loadedAnalytics,
+        ] = await Promise.all([
+          getFuelSettings(),
+          getFuelEntries(),
+          getMonthlyFuelAnalytics(
+            selectedYear,
+            selectedMonth
+          ),
+        ]);
 
         if (!mounted) {
           return;
@@ -136,22 +184,33 @@ export default function FuelScreen() {
         setAnalytics(loadedAnalytics);
 
         setTankCapacityInput(
-          String(loadedSettings.tankCapacityLitres)
+          String(
+            loadedSettings.tankCapacityLitres
+          )
         );
 
         setFuelPriceInput(
-          String(loadedSettings.currentFuelPrice)
+          String(
+            loadedSettings.currentFuelPrice
+          )
         );
 
         setKmPerLitreInput(
-          String(loadedSettings.estimatedKmPerLitre)
+          String(
+            loadedSettings.estimatedKmPerLitre
+          )
         );
 
         setRefuelPriceInput(
-          String(loadedSettings.currentFuelPrice)
+          String(
+            loadedSettings.currentFuelPrice
+          )
         );
       } catch (err) {
-        console.error("Fuel: failed to initialize:", err);
+        console.error(
+          "Fuel: failed to initialize:",
+          err
+        );
 
         if (!mounted) {
           return;
@@ -179,7 +238,8 @@ export default function FuelScreen() {
   }, []);
 
   /*
-   * Reload monthly analytics whenever the selected month changes.
+   * Reload monthly analytics whenever the
+   * selected month changes.
    */
   useEffect(() => {
     let mounted = true;
@@ -188,10 +248,11 @@ export default function FuelScreen() {
       try {
         setError(null);
 
-        const result = await getMonthlyFuelAnalytics(
-          selectedYear,
-          selectedMonth
-        );
+        const result =
+          await getMonthlyFuelAnalytics(
+            selectedYear,
+            selectedMonth
+          );
 
         if (!mounted) {
           return;
@@ -217,8 +278,9 @@ export default function FuelScreen() {
     }
 
     /*
-     * The initial load already loads the current month.
-     * This effect is primarily responsible for month navigation.
+     * The initial load already loads the current
+     * month. This effect is primarily responsible
+     * for month navigation.
      */
     if (!loading) {
       void loadMonthlyAnalytics();
@@ -229,40 +291,60 @@ export default function FuelScreen() {
     };
 
     // eslint-disable-next-line react-hooks/set-state-in-effect
-  }, [selectedMonth, selectedYear]);
+  }, [
+    selectedMonth,
+    selectedYear,
+  ]);
 
   const refreshData = async () => {
     try {
       setError(null);
 
-      const [loadedSettings, loadedEntries, loadedAnalytics] =
-        await Promise.all([
-          getFuelSettings(),
-          getFuelEntries(),
-          getMonthlyFuelAnalytics(selectedYear, selectedMonth),
-        ]);
+      const [
+        loadedSettings,
+        loadedEntries,
+        loadedAnalytics,
+      ] = await Promise.all([
+        getFuelSettings(),
+        getFuelEntries(),
+        getMonthlyFuelAnalytics(
+          selectedYear,
+          selectedMonth
+        ),
+      ]);
 
       setSettings(loadedSettings);
       setFuelEntries(loadedEntries);
       setAnalytics(loadedAnalytics);
 
       setTankCapacityInput(
-        String(loadedSettings.tankCapacityLitres)
+        String(
+          loadedSettings.tankCapacityLitres
+        )
       );
 
       setFuelPriceInput(
-        String(loadedSettings.currentFuelPrice)
+        String(
+          loadedSettings.currentFuelPrice
+        )
       );
 
       setKmPerLitreInput(
-        String(loadedSettings.estimatedKmPerLitre)
+        String(
+          loadedSettings.estimatedKmPerLitre
+        )
       );
 
       setRefuelPriceInput(
-        String(loadedSettings.currentFuelPrice)
+        String(
+          loadedSettings.currentFuelPrice
+        )
       );
     } catch (err) {
-      console.error("Fuel: refresh failed:", err);
+      console.error(
+        "Fuel: refresh failed:",
+        err
+      );
 
       setError(
         err instanceof Error
@@ -272,23 +354,64 @@ export default function FuelScreen() {
     }
   };
 
+  /*
+   * Current estimated fuel remaining.
+   */
   const estimatedFuelRemaining =
-    settings?.estimatedFuelRemainingLitres ?? 0;
+    settings?.estimatedFuelRemainingLitres ??
+    0;
 
+  /*
+   * Configured tank capacity.
+   */
   const tankCapacity =
-    settings?.tankCapacityLitres ?? 0;
+    settings?.tankCapacityLitres ??
+    0;
 
+  /*
+   * Calculate measured efficiency from all
+   * valid full-tank checkpoints.
+   *
+   * This is the authoritative efficiency once
+   * enough real-world data exists.
+   */
+  const measuredKmPerLitre =
+    useMemo(() => {
+      const result =
+        calculateFuelEfficiency(
+          fuelEntries
+        );
+
+      return result.estimatedKmPerLitre;
+    }, [fuelEntries]);
+
+  /*
+   * Measured efficiency takes priority.
+   *
+   * The manually configured efficiency is used
+   * only when there is not enough full-tank data.
+   */
   const estimatedKmPerLitre =
-    settings?.estimatedKmPerLitre ?? 0;
+    measuredKmPerLitre ??
+    settings?.estimatedKmPerLitre ??
+    0;
 
+  /*
+   * Calculate range using the same effective
+   * efficiency used by the rest of the system.
+   */
   const estimatedRangeKm =
-    tankCapacity > 0 && estimatedKmPerLitre > 0
+    tankCapacity > 0 &&
+    estimatedKmPerLitre > 0
       ? calculateRemainingRange(
           estimatedFuelRemaining,
           estimatedKmPerLitre
         )
       : 0;
 
+  /*
+   * Calculate percentage of estimated tank level.
+   */
   const fuelPercentage = useMemo(() => {
     if (tankCapacity <= 0) {
       return 0;
@@ -298,24 +421,41 @@ export default function FuelScreen() {
       100,
       Math.max(
         0,
-        (estimatedFuelRemaining / tankCapacity) * 100
+        (estimatedFuelRemaining /
+          tankCapacity) *
+          100
       )
     );
-  }, [estimatedFuelRemaining, tankCapacity]);
+  }, [
+    estimatedFuelRemaining,
+    tankCapacity,
+  ]);
 
+  /*
+   * Most recent fuel transactions.
+   */
   const recentEntries = useMemo(() => {
     return [...fuelEntries]
       .sort(
         (a, b) =>
-          new Date(b.addedAt).getTime() -
-          new Date(a.addedAt).getTime()
+          new Date(
+            b.addedAt
+          ).getTime() -
+          new Date(
+            a.addedAt
+          ).getTime()
       )
       .slice(0, 10);
   }, [fuelEntries]);
 
-  const changeMonth = (direction: number) => {
-    let nextMonth = selectedMonth + direction;
-    let nextYear = selectedYear;
+  const changeMonth = (
+    direction: number
+  ) => {
+    let nextMonth =
+      selectedMonth + direction;
+
+    let nextYear =
+      selectedYear;
 
     if (nextMonth < 0) {
       nextMonth = 11;
@@ -331,148 +471,238 @@ export default function FuelScreen() {
     setSelectedYear(nextYear);
   };
 
-  const handleSaveSettings = async () => {
-    const tankCapacity = Number(tankCapacityInput);
-    const fuelPrice = Number(fuelPriceInput);
-    const kmPerLitre = Number(kmPerLitreInput);
+  /*
+   * Save manual fuel settings.
+   *
+   * The manual efficiency remains available as
+   * a fallback until measured efficiency exists.
+   */
+  const handleSaveSettings =
+    async () => {
+      const tankCapacity =
+        Number(
+          tankCapacityInput
+        );
 
-    if (
-      !Number.isFinite(tankCapacity) ||
-      tankCapacity <= 0
-    ) {
-      Alert.alert(
-        "Invalid tank capacity",
-        "Enter a tank capacity greater than zero."
-      );
-      return;
-    }
+      const fuelPrice =
+        Number(
+          fuelPriceInput
+        );
 
-    if (
-      !Number.isFinite(fuelPrice) ||
-      fuelPrice <= 0
-    ) {
-      Alert.alert(
-        "Invalid fuel price",
-        "Enter a fuel price greater than zero."
-      );
-      return;
-    }
+      const kmPerLitre =
+        Number(
+          kmPerLitreInput
+        );
 
-    if (
-      !Number.isFinite(kmPerLitre) ||
-      kmPerLitre <= 0
-    ) {
-      Alert.alert(
-        "Invalid fuel efficiency",
-        "Enter an estimated km/L greater than zero."
-      );
-      return;
-    }
+      if (
+        !Number.isFinite(
+          tankCapacity
+        ) ||
+        tankCapacity <= 0
+      ) {
+        Alert.alert(
+          "Invalid tank capacity",
+          "Enter a tank capacity greater than zero."
+        );
 
-    const currentFuel = Math.min(
-      settings?.estimatedFuelRemainingLitres ?? 0,
-      tankCapacity
-    );
+        return;
+      }
 
-    const newSettings: FuelSettings = {
-      tankCapacityLitres: tankCapacity,
-      currentFuelPrice: fuelPrice,
-      estimatedKmPerLitre: kmPerLitre,
-      estimatedFuelRemainingLitres: currentFuel,
+      if (
+        !Number.isFinite(
+          fuelPrice
+        ) ||
+        fuelPrice <= 0
+      ) {
+        Alert.alert(
+          "Invalid fuel price",
+          "Enter a fuel price greater than zero."
+        );
+
+        return;
+      }
+
+      if (
+        !Number.isFinite(
+          kmPerLitre
+        ) ||
+        kmPerLitre <= 0
+      ) {
+        Alert.alert(
+          "Invalid fuel efficiency",
+          "Enter a manual fallback km/L greater than zero."
+        );
+
+        return;
+      }
+
+      const currentFuel =
+        Math.min(
+          settings?.estimatedFuelRemainingLitres ??
+            0,
+          tankCapacity
+        );
+
+      const newSettings:
+        FuelSettings = {
+        tankCapacityLitres:
+          tankCapacity,
+
+        currentFuelPrice:
+          fuelPrice,
+
+        estimatedKmPerLitre:
+          kmPerLitre,
+
+        estimatedFuelRemainingLitres:
+          currentFuel,
+      };
+
+      try {
+        setSavingSettings(
+          true
+        );
+
+        setError(null);
+
+        await saveFuelSettings(
+          newSettings
+        );
+
+        setSettings(
+          newSettings
+        );
+
+        setFuelPriceInput(
+          String(fuelPrice)
+        );
+
+        Alert.alert(
+          "Saved",
+          "Fuel settings have been updated."
+        );
+      } catch (err) {
+        console.error(
+          "Fuel: failed to save settings:",
+          err
+        );
+
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Unable to save fuel settings."
+        );
+      } finally {
+        setSavingSettings(
+          false
+        );
+      }
     };
 
-    try {
-      setSavingSettings(true);
-      setError(null);
+  /*
+   * Add a new fuel transaction.
+   */
+  const handleAddFuel =
+    async () => {
+      const amountSpent =
+        Number(
+          amountSpentInput
+        );
 
-      await saveFuelSettings(newSettings);
+      const price =
+        refuelPriceInput.trim() === ""
+          ? settings?.currentFuelPrice ??
+            0
+          : Number(
+              refuelPriceInput
+            );
 
-      setSettings(newSettings);
-      setFuelPriceInput(String(fuelPrice));
+      const odometer =
+        odometerInput.trim() === ""
+          ? null
+          : Number(
+              odometerInput
+            );
 
-      Alert.alert(
-        "Saved",
-        "Fuel settings have been updated."
-      );
-    } catch (err) {
-      console.error(
-        "Fuel: failed to save settings:",
-        err
-      );
+      if (
+        !Number.isFinite(
+          amountSpent
+        ) ||
+        amountSpent <= 0
+      ) {
+        Alert.alert(
+          "Invalid amount",
+          "Enter the amount of money spent on fuel."
+        );
 
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to save fuel settings."
-      );
-    } finally {
-      setSavingSettings(false);
-    }
-  };
+        return;
+      }
 
-  const handleAddFuel = async () => {
-    const amountSpent = Number(amountSpentInput);
+      if (
+        !Number.isFinite(
+          price
+        ) ||
+        price <= 0
+      ) {
+        Alert.alert(
+          "Invalid fuel price",
+          "Enter a fuel price greater than zero."
+        );
 
-    const price =
-      refuelPriceInput.trim() === ""
-        ? settings?.currentFuelPrice ?? 0
-        : Number(refuelPriceInput);
+        return;
+      }
 
-    const odometer =
-      odometerInput.trim() === ""
-        ? null
-        : Number(odometerInput);
+      if (
+        odometer != null &&
+        (
+          !Number.isFinite(
+            odometer
+          ) ||
+          odometer < 0
+        )
+      ) {
+        Alert.alert(
+          "Invalid odometer",
+          "Enter a valid odometer reading."
+        );
 
-    if (
-      !Number.isFinite(amountSpent) ||
-      amountSpent <= 0
-    ) {
-      Alert.alert(
-        "Invalid amount",
-        "Enter the amount of money spent on fuel."
-      );
-      return;
-    }
+        return;
+      }
 
-    if (
-      !Number.isFinite(price) ||
-      price <= 0
-    ) {
-      Alert.alert(
-        "Invalid fuel price",
-        "Enter a fuel price greater than zero."
-      );
-      return;
-    }
+      try {
+        setAddingFuel(
+          true
+        );
 
-    if (
-      odometer != null &&
-      (!Number.isFinite(odometer) || odometer < 0)
-    ) {
-      Alert.alert(
-        "Invalid odometer",
-        "Enter a valid odometer reading."
-      );
-      return;
-    }
+        setError(null);
 
-    try {
-      setAddingFuel(true);
-      setError(null);
+        const result =
+          await addFuelTransaction({
+            amountSpent,
+            pricePerLitre:
+              price,
+            odometerKm:
+              odometer,
+            isFullTank,
+          });
 
-      const result = await addFuelTransaction({
-        amountSpent,
-        pricePerLitre: price,
-        odometerKm: odometer,
-        isFullTank,
-      });
+        setAmountSpentInput(
+          ""
+        );
 
-      setAmountSpentInput("");
-      setOdometerInput("");
-      setIsFullTank(false);
+        setOdometerInput(
+          ""
+        );
 
-      const [updatedSettings, updatedEntries, updatedAnalytics] =
-        await Promise.all([
+        setIsFullTank(
+          false
+        );
+
+        const [
+          updatedSettings,
+          updatedEntries,
+          updatedAnalytics,
+        ] = await Promise.all([
           getFuelSettings(),
           getFuelEntries(),
           getMonthlyFuelAnalytics(
@@ -481,59 +711,95 @@ export default function FuelScreen() {
           ),
         ]);
 
-      setSettings(updatedSettings);
-      setFuelEntries(updatedEntries);
-      setAnalytics(updatedAnalytics);
+        setSettings(
+          updatedSettings
+        );
 
-      setTankCapacityInput(
-        String(updatedSettings.tankCapacityLitres)
-      );
+        setFuelEntries(
+          updatedEntries
+        );
 
-      setFuelPriceInput(
-        String(updatedSettings.currentFuelPrice)
-      );
+        setAnalytics(
+          updatedAnalytics
+        );
 
-      setKmPerLitreInput(
-        String(updatedSettings.estimatedKmPerLitre)
-      );
+        setTankCapacityInput(
+          String(
+            updatedSettings.tankCapacityLitres
+          )
+        );
 
-      setRefuelPriceInput(
-        String(updatedSettings.currentFuelPrice)
-      );
+        setFuelPriceInput(
+          String(
+            updatedSettings.currentFuelPrice
+          )
+        );
 
-      Alert.alert(
-        "Fuel added",
-        `${formatNumber(result.litresAdded, 2)} L added.\n\nEstimated fuel remaining: ${formatNumber(
-          result.estimatedFuelRemainingLitres,
-          2
-        )} L\nEstimated range: ${Math.round(
-          result.estimatedRangeKm
-        )} km`
-      );
-    } catch (err) {
-      console.error(
-        "Fuel: failed to add transaction:",
-        err
-      );
+        setKmPerLitreInput(
+          String(
+            updatedSettings.estimatedKmPerLitre
+          )
+        );
 
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to add fuel transaction."
-      );
-    } finally {
-      setAddingFuel(false);
-    }
-  };
+        setRefuelPriceInput(
+          String(
+            updatedSettings.currentFuelPrice
+          )
+        );
+
+        Alert.alert(
+          "Fuel added",
+          `${formatNumber(
+            result.litresAdded,
+            2
+          )} L added.\n\nEstimated fuel remaining: ${formatNumber(
+            result.estimatedFuelRemainingLitres,
+            2
+          )} L\nEstimated efficiency: ${formatNumber(
+            result.estimatedKmPerLitre,
+            1
+          )} km/L\nEstimated range: ${Math.round(
+            result.estimatedRangeKm
+          )} km`
+        );
+      } catch (err) {
+        console.error(
+          "Fuel: failed to add transaction:",
+          err
+        );
+
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Unable to add fuel transaction."
+        );
+      } finally {
+        setAddingFuel(
+          false
+        );
+      }
+    };
 
   if (loading) {
     return (
-      <View style={styles.loadingScreen}>
-        <Text style={styles.loadingTitle}>
+      <View
+        style={
+          styles.loadingScreen
+        }
+      >
+        <Text
+          style={
+            styles.loadingTitle
+          }
+        >
           Loading fuel data
         </Text>
 
-        <Text style={styles.loadingText}>
+        <Text
+          style={
+            styles.loadingText
+          }
+        >
           Reading local fuel records...
         </Text>
       </View>
@@ -550,82 +816,164 @@ export default function FuelScreen() {
       }
     >
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={
+          styles.content
+        }
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.header}>
+        <View
+          style={styles.header}
+        >
           <View>
-            <Text style={styles.eyebrow}>
+            <Text
+              style={
+                styles.eyebrow
+              }
+            >
               MOTOPILOT
             </Text>
 
-            <Text style={styles.title}>
+            <Text
+              style={
+                styles.title
+              }
+            >
               Fuel
             </Text>
 
-            <Text style={styles.subtitle}>
+            <Text
+              style={
+                styles.subtitle
+              }
+            >
               Estimated fuel tracking and spending
             </Text>
           </View>
 
           <Pressable
-            style={styles.refreshButton}
-            onPress={refreshData}
+            style={
+              styles.refreshButton
+            }
+            onPress={
+              refreshData
+            }
           >
-            <Text style={styles.refreshButtonText}>
+            <Text
+              style={
+                styles.refreshButtonText
+              }
+            >
               REFRESH
             </Text>
           </Pressable>
         </View>
 
         {error && (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorTitle}>
+          <View
+            style={
+              styles.errorBox
+            }
+          >
+            <Text
+              style={
+                styles.errorTitle
+              }
+            >
               Fuel data error
             </Text>
 
-            <Text style={styles.errorText}>
+            <Text
+              style={
+                styles.errorText
+              }
+            >
               {error}
             </Text>
           </View>
         )}
 
         {/* Current estimated fuel */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>
+        <View
+          style={styles.section}
+        >
+          <Text
+            style={
+              styles.sectionTitle
+            }
+          >
             CURRENT ESTIMATE
           </Text>
 
-          <View style={styles.fuelCard}>
-            <View style={styles.fuelCardTop}>
+          <View
+            style={
+              styles.fuelCard
+            }
+          >
+            <View
+              style={
+                styles.fuelCardTop
+              }
+            >
               <View>
-                <Text style={styles.largeValue}>
+                <Text
+                  style={
+                    styles.largeValue
+                  }
+                >
                   {formatNumber(
                     estimatedFuelRemaining,
                     2
                   )}
-                  <Text style={styles.largeUnit}>
+
+                  <Text
+                    style={
+                      styles.largeUnit
+                    }
+                  >
                     {" "}L
                   </Text>
                 </Text>
 
-                <Text style={styles.mutedText}>
+                <Text
+                  style={
+                    styles.mutedText
+                  }
+                >
                   Estimated fuel remaining
                 </Text>
               </View>
 
-              <View style={styles.percentageBox}>
-                <Text style={styles.percentageValue}>
-                  {Math.round(fuelPercentage)}%
+              <View
+                style={
+                  styles.percentageBox
+                }
+              >
+                <Text
+                  style={
+                    styles.percentageValue
+                  }
+                >
+                  {Math.round(
+                    fuelPercentage
+                  )}
+                  %
                 </Text>
 
-                <Text style={styles.percentageLabel}>
+                <Text
+                  style={
+                    styles.percentageLabel
+                  }
+                >
                   TANK
                 </Text>
               </View>
             </View>
 
-            <View style={styles.progressTrack}>
+            <View
+              style={
+                styles.progressTrack
+              }
+            >
               <View
                 style={[
                   styles.progressFill,
@@ -636,94 +984,188 @@ export default function FuelScreen() {
               />
             </View>
 
-            <View style={styles.rangeRow}>
+            <View
+              style={
+                styles.rangeRow
+              }
+            >
               <View>
-                <Text style={styles.statLabel}>
+                <Text
+                  style={
+                    styles.statLabel
+                  }
+                >
                   RANGE
                 </Text>
 
-                <Text style={styles.statValue}>
-                  {Math.round(estimatedRangeKm)} km
+                <Text
+                  style={
+                    styles.statValue
+                  }
+                >
+                  {Math.round(
+                    estimatedRangeKm
+                  )}{" "}
+                  km
                 </Text>
               </View>
 
               <View>
-                <Text style={styles.statLabel}>
+                <Text
+                  style={
+                    styles.statLabel
+                  }
+                >
                   EFFICIENCY
                 </Text>
 
-                <Text style={styles.statValue}>
+                <Text
+                  style={
+                    styles.statValue
+                  }
+                >
                   {formatNumber(
                     estimatedKmPerLitre,
                     1
                   )}{" "}
                   km/L
                 </Text>
+
+                <Text
+                  style={
+                    styles.efficiencySource
+                  }
+                >
+                  {measuredKmPerLitre != null
+                    ? "MEASURED"
+                    : "MANUAL ESTIMATE"}
+                </Text>
               </View>
 
               <View>
-                <Text style={styles.statLabel}>
+                <Text
+                  style={
+                    styles.statLabel
+                  }
+                >
                   CAPACITY
                 </Text>
 
-                <Text style={styles.statValue}>
-                  {formatNumber(tankCapacity, 1)} L
+                <Text
+                  style={
+                    styles.statValue
+                  }
+                >
+                  {formatNumber(
+                    tankCapacity,
+                    1
+                  )}{" "}
+                  L
                 </Text>
               </View>
             </View>
           </View>
 
-          <Text style={styles.disclaimer}>
-            Fuel level and range are estimates. Your motorcycle
-            does not provide electronic fuel-level data.
+          <Text
+            style={
+              styles.disclaimer
+            }
+          >
+            Fuel level and range are estimates.
+            Your motorcycle does not provide
+            electronic fuel-level data.
           </Text>
         </View>
 
         {/* Settings */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>
+        <View
+          style={styles.section}
+        >
+          <Text
+            style={
+              styles.sectionTitle
+            }
+          >
             FUEL SETTINGS
           </Text>
 
-          <View style={styles.formCard}>
-            <Text style={styles.inputLabel}>
+          <View
+            style={
+              styles.formCard
+            }
+          >
+            <Text
+              style={
+                styles.inputLabel
+              }
+            >
               TANK CAPACITY (L)
             </Text>
 
             <TextInput
               style={styles.input}
-              value={tankCapacityInput}
-              onChangeText={setTankCapacityInput}
+              value={
+                tankCapacityInput
+              }
+              onChangeText={
+                setTankCapacityInput
+              }
               keyboardType="decimal-pad"
               placeholder="12"
               placeholderTextColor="#666"
             />
 
-            <Text style={styles.inputLabel}>
+            <Text
+              style={
+                styles.inputLabel
+              }
+            >
               CURRENT FUEL PRICE / L
             </Text>
 
             <TextInput
               style={styles.input}
-              value={fuelPriceInput}
-              onChangeText={setFuelPriceInput}
+              value={
+                fuelPriceInput
+              }
+              onChangeText={
+                setFuelPriceInput
+              }
               keyboardType="decimal-pad"
               placeholder="300"
               placeholderTextColor="#666"
             />
 
-            <Text style={styles.inputLabel}>
-              ESTIMATED EFFICIENCY (KM/L)
+            <Text
+              style={
+                styles.inputLabel
+              }
+            >
+              MANUAL FALLBACK EFFICIENCY (KM/L)
             </Text>
 
             <TextInput
               style={styles.input}
-              value={kmPerLitreInput}
-              onChangeText={setKmPerLitreInput}
+              value={
+                kmPerLitreInput
+              }
+              onChangeText={
+                setKmPerLitreInput
+              }
               keyboardType="decimal-pad"
               placeholder="40"
               placeholderTextColor="#666"
             />
+
+            <Text
+              style={
+                styles.inputHint
+              }
+            >
+              Used until MotoPilot has enough
+              full-tank data to calculate measured
+              km/L automatically.
+            </Text>
 
             <Pressable
               style={[
@@ -731,10 +1173,18 @@ export default function FuelScreen() {
                 savingSettings &&
                   styles.disabledButton,
               ]}
-              onPress={handleSaveSettings}
-              disabled={savingSettings}
+              onPress={
+                handleSaveSettings
+              }
+              disabled={
+                savingSettings
+              }
             >
-              <Text style={styles.primaryButtonText}>
+              <Text
+                style={
+                  styles.primaryButtonText
+                }
+              >
                 {savingSettings
                   ? "SAVING..."
                   : "SAVE SETTINGS"}
@@ -744,51 +1194,89 @@ export default function FuelScreen() {
         </View>
 
         {/* Add fuel */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>
+        <View
+          style={styles.section}
+        >
+          <Text
+            style={
+              styles.sectionTitle
+            }
+          >
             ADD REFUEL
           </Text>
 
-          <View style={styles.formCard}>
-            <Text style={styles.inputLabel}>
+          <View
+            style={
+              styles.formCard
+            }
+          >
+            <Text
+              style={
+                styles.inputLabel
+              }
+            >
               AMOUNT SPENT
             </Text>
 
             <TextInput
               style={styles.input}
-              value={amountSpentInput}
-              onChangeText={setAmountSpentInput}
+              value={
+                amountSpentInput
+              }
+              onChangeText={
+                setAmountSpentInput
+              }
               keyboardType="decimal-pad"
               placeholder="5000"
               placeholderTextColor="#666"
             />
 
-            <Text style={styles.inputLabel}>
+            <Text
+              style={
+                styles.inputLabel
+              }
+            >
               FUEL PRICE / L
             </Text>
 
             <TextInput
               style={styles.input}
-              value={refuelPriceInput}
-              onChangeText={setRefuelPriceInput}
+              value={
+                refuelPriceInput
+              }
+              onChangeText={
+                setRefuelPriceInput
+              }
               keyboardType="decimal-pad"
               placeholder="300"
               placeholderTextColor="#666"
             />
 
-            <Text style={styles.inputHint}>
-              Leave this at the current price or change it for
-              this specific transaction.
+            <Text
+              style={
+                styles.inputHint
+              }
+            >
+              Leave this at the current price or
+              change it for this specific transaction.
             </Text>
 
-            <Text style={styles.inputLabel}>
+            <Text
+              style={
+                styles.inputLabel
+              }
+            >
               ODOMETER (KM)
             </Text>
 
             <TextInput
               style={styles.input}
-              value={odometerInput}
-              onChangeText={setOdometerInput}
+              value={
+                odometerInput
+              }
+              onChangeText={
+                setOdometerInput
+              }
               keyboardType="decimal-pad"
               placeholder="20000"
               placeholderTextColor="#666"
@@ -801,7 +1289,10 @@ export default function FuelScreen() {
                   styles.fullTankButtonActive,
               ]}
               onPress={() =>
-                setIsFullTank((value) => !value)
+                setIsFullTank(
+                  (value) =>
+                    !value
+                )
               }
             >
               <View
@@ -812,20 +1303,38 @@ export default function FuelScreen() {
                 ]}
               >
                 {isFullTank && (
-                  <Text style={styles.checkmark}>
+                  <Text
+                    style={
+                      styles.checkmark
+                    }
+                  >
                     ✓
                   </Text>
                 )}
               </View>
 
-              <View style={styles.fullTankTextContainer}>
-                <Text style={styles.fullTankTitle}>
+              <View
+                style={
+                  styles.fullTankTextContainer
+                }
+              >
+                <Text
+                  style={
+                    styles.fullTankTitle
+                  }
+                >
                   FULL TANK
                 </Text>
 
-                <Text style={styles.fullTankDescription}>
-                  Use this when you filled the tank completely.
-                  This helps calculate estimated km/L.
+                <Text
+                  style={
+                    styles.fullTankDescription
+                  }
+                >
+                  Use this when you filled the tank
+                  completely. Together with the
+                  odometer reading, this is used to
+                  calculate measured km/L.
                 </Text>
               </View>
             </Pressable>
@@ -836,10 +1345,18 @@ export default function FuelScreen() {
                 addingFuel &&
                   styles.disabledButton,
               ]}
-              onPress={handleAddFuel}
-              disabled={addingFuel}
+              onPress={
+                handleAddFuel
+              }
+              disabled={
+                addingFuel
+              }
             >
-              <Text style={styles.primaryButtonText}>
+              <Text
+                style={
+                  styles.primaryButtonText
+                }
+              >
                 {addingFuel
                   ? "ADDING..."
                   : "ADD FUEL"}
@@ -849,49 +1366,107 @@ export default function FuelScreen() {
         </View>
 
         {/* Monthly analytics */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>
+        <View
+          style={styles.section}
+        >
+          <Text
+            style={
+              styles.sectionTitle
+            }
+          >
             MONTHLY ANALYTICS
           </Text>
 
-          <View style={styles.monthSelector}>
+          <View
+            style={
+              styles.monthSelector
+            }
+          >
             <Pressable
-              style={styles.monthButton}
-              onPress={() => changeMonth(-1)}
+              style={
+                styles.monthButton
+              }
+              onPress={() =>
+                changeMonth(-1)
+              }
             >
-              <Text style={styles.monthButtonText}>
+              <Text
+                style={
+                  styles.monthButtonText
+                }
+              >
                 ‹
               </Text>
             </Pressable>
 
-            <View style={styles.monthTitleContainer}>
-              <Text style={styles.monthTitle}>
-                {MONTH_NAMES[selectedMonth]}
+            <View
+              style={
+                styles.monthTitleContainer
+              }
+            >
+              <Text
+                style={
+                  styles.monthTitle
+                }
+              >
+                {
+                  MONTH_NAMES[
+                    selectedMonth
+                  ]
+                }
               </Text>
 
-              <Text style={styles.monthYear}>
+              <Text
+                style={
+                  styles.monthYear
+                }
+              >
                 {selectedYear}
               </Text>
             </View>
 
             <Pressable
-              style={styles.monthButton}
-              onPress={() => changeMonth(1)}
+              style={
+                styles.monthButton
+              }
+              onPress={() =>
+                changeMonth(1)
+              }
             >
-              <Text style={styles.monthButtonText}>
+              <Text
+                style={
+                  styles.monthButtonText
+                }
+              >
                 ›
               </Text>
             </Pressable>
           </View>
 
           {analytics && (
-            <View style={styles.analyticsGrid}>
-              <View style={styles.analyticsCard}>
-                <Text style={styles.analyticsLabel}>
+            <View
+              style={
+                styles.analyticsGrid
+              }
+            >
+              <View
+                style={
+                  styles.analyticsCard
+                }
+              >
+                <Text
+                  style={
+                    styles.analyticsLabel
+                  }
+                >
                   SPENT
                 </Text>
 
-                <Text style={styles.analyticsValue}>
+                <Text
+                  style={
+                    styles.analyticsValue
+                  }
+                >
                   Rs.{" "}
                   {Math.round(
                     analytics.totalMoneySpent
@@ -899,12 +1474,24 @@ export default function FuelScreen() {
                 </Text>
               </View>
 
-              <View style={styles.analyticsCard}>
-                <Text style={styles.analyticsLabel}>
+              <View
+                style={
+                  styles.analyticsCard
+                }
+              >
+                <Text
+                  style={
+                    styles.analyticsLabel
+                  }
+                >
                   LITRES
                 </Text>
 
-                <Text style={styles.analyticsValue}>
+                <Text
+                  style={
+                    styles.analyticsValue
+                  }
+                >
                   {formatNumber(
                     analytics.totalLitresPurchased,
                     2
@@ -913,12 +1500,24 @@ export default function FuelScreen() {
                 </Text>
               </View>
 
-              <View style={styles.analyticsCard}>
-                <Text style={styles.analyticsLabel}>
+              <View
+                style={
+                  styles.analyticsCard
+                }
+              >
+                <Text
+                  style={
+                    styles.analyticsLabel
+                  }
+                >
                   AVG PRICE
                 </Text>
 
-                <Text style={styles.analyticsValue}>
+                <Text
+                  style={
+                    styles.analyticsValue
+                  }
+                >
                   Rs.{" "}
                   {formatNumber(
                     analytics.averageFuelPrice,
@@ -927,22 +1526,48 @@ export default function FuelScreen() {
                 </Text>
               </View>
 
-              <View style={styles.analyticsCard}>
-                <Text style={styles.analyticsLabel}>
+              <View
+                style={
+                  styles.analyticsCard
+                }
+              >
+                <Text
+                  style={
+                    styles.analyticsLabel
+                  }
+                >
                   REFUELS
                 </Text>
 
-                <Text style={styles.analyticsValue}>
-                  {analytics.refuelCount}
+                <Text
+                  style={
+                    styles.analyticsValue
+                  }
+                >
+                  {
+                    analytics.refuelCount
+                  }
                 </Text>
               </View>
 
-              <View style={styles.analyticsCard}>
-                <Text style={styles.analyticsLabel}>
+              <View
+                style={
+                  styles.analyticsCard
+                }
+              >
+                <Text
+                  style={
+                    styles.analyticsLabel
+                  }
+                >
                   DISTANCE
                 </Text>
 
-                <Text style={styles.analyticsValue}>
+                <Text
+                  style={
+                    styles.analyticsValue
+                  }
+                >
                   {formatNumber(
                     analytics.distanceKm,
                     1
@@ -951,13 +1576,26 @@ export default function FuelScreen() {
                 </Text>
               </View>
 
-              <View style={styles.analyticsCard}>
-                <Text style={styles.analyticsLabel}>
+              <View
+                style={
+                  styles.analyticsCard
+                }
+              >
+                <Text
+                  style={
+                    styles.analyticsLabel
+                  }
+                >
                   EST. KM/L
                 </Text>
 
-                <Text style={styles.analyticsValue}>
-                  {analytics.estimatedKmPerLitre != null
+                <Text
+                  style={
+                    styles.analyticsValue
+                  }
+                >
+                  {analytics.estimatedKmPerLitre !=
+                  null
                     ? `${formatNumber(
                         analytics.estimatedKmPerLitre,
                         1
@@ -966,13 +1604,26 @@ export default function FuelScreen() {
                 </Text>
               </View>
 
-              <View style={styles.analyticsCard}>
-                <Text style={styles.analyticsLabel}>
+              <View
+                style={
+                  styles.analyticsCard
+                }
+              >
+                <Text
+                  style={
+                    styles.analyticsLabel
+                  }
+                >
                   COST / KM
                 </Text>
 
-                <Text style={styles.analyticsValue}>
-                  {analytics.estimatedCostPerKm != null
+                <Text
+                  style={
+                    styles.analyticsValue
+                  }
+                >
+                  {analytics.estimatedCostPerKm !=
+                  null
                     ? `Rs. ${formatNumber(
                         analytics.estimatedCostPerKm,
                         2
@@ -984,93 +1635,177 @@ export default function FuelScreen() {
           )}
 
           {!analytics && (
-            <View style={styles.emptyBox}>
-              <Text style={styles.emptyText}>
-                No analytics available for this month.
+            <View
+              style={
+                styles.emptyBox
+              }
+            >
+              <Text
+                style={
+                  styles.emptyText
+                }
+              >
+                No analytics available for
+                this month.
               </Text>
             </View>
           )}
         </View>
 
         {/* Recent fuel records */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>
+        <View
+          style={styles.section}
+        >
+          <Text
+            style={
+              styles.sectionTitle
+            }
+          >
             RECENT REFUELS
           </Text>
 
-          {recentEntries.length === 0 ? (
-            <View style={styles.emptyBox}>
-              <Text style={styles.emptyText}>
-                No fuel transactions recorded yet.
+          {recentEntries.length ===
+          0 ? (
+            <View
+              style={
+                styles.emptyBox
+              }
+            >
+              <Text
+                style={
+                  styles.emptyText
+                }
+              >
+                No fuel transactions
+                recorded yet.
               </Text>
             </View>
           ) : (
-            <View style={styles.entriesContainer}>
-              {recentEntries.map((entry) => (
-                <View
-                  key={entry.id}
-                  style={styles.entryRow}
-                >
-                  <View style={styles.entryMain}>
-                    <Text style={styles.entryDate}>
-                      {formatDate(entry.addedAt)}
-                    </Text>
-
-                    <Text style={styles.entryTime}>
-                      {formatTime(entry.addedAt)}
-                    </Text>
-
-                    {entry.odometerKm != null && (
-                      <Text style={styles.entrySecondary}>
-                        Odometer:{" "}
-                        {entry.odometerKm.toLocaleString()} km
+            <View
+              style={
+                styles.entriesContainer
+              }
+            >
+              {recentEntries.map(
+                (entry) => (
+                  <View
+                    key={entry.id}
+                    style={
+                      styles.entryRow
+                    }
+                  >
+                    <View
+                      style={
+                        styles.entryMain
+                      }
+                    >
+                      <Text
+                        style={
+                          styles.entryDate
+                        }
+                      >
+                        {formatDate(
+                          entry.addedAt
+                        )}
                       </Text>
-                    )}
 
-                    {entry.isFullTank && (
-                      <Text style={styles.fullTankBadge}>
-                        FULL TANK
+                      <Text
+                        style={
+                          styles.entryTime
+                        }
+                      >
+                        {formatTime(
+                          entry.addedAt
+                        )}
                       </Text>
-                    )}
-                  </View>
 
-                  <View style={styles.entryRight}>
-                    <Text style={styles.entryLitres}>
-                      {formatNumber(
-                        entry.amountLitres,
-                        2
-                      )}{" "}
-                      L
-                    </Text>
+                      {entry.odometerKm !=
+                        null && (
+                        <Text
+                          style={
+                            styles.entrySecondary
+                          }
+                        >
+                          Odometer:{" "}
+                          {entry.odometerKm.toLocaleString()}{" "}
+                          km
+                        </Text>
+                      )}
 
-                    {entry.amountSpent != null && (
-                      <Text style={styles.entrySpent}>
-                        Rs.{" "}
-                        {entry.amountSpent.toLocaleString()}
-                      </Text>
-                    )}
+                      {entry.isFullTank && (
+                        <Text
+                          style={
+                            styles.fullTankBadge
+                          }
+                        >
+                          FULL TANK
+                        </Text>
+                      )}
+                    </View>
 
-                    {entry.pricePerLitre != null && (
-                      <Text style={styles.entryPrice}>
-                        Rs.{" "}
+                    <View
+                      style={
+                        styles.entryRight
+                      }
+                    >
+                      <Text
+                        style={
+                          styles.entryLitres
+                        }
+                      >
                         {formatNumber(
-                          entry.pricePerLitre,
+                          entry.amountLitres,
                           2
                         )}{" "}
-                        / L
+                        L
                       </Text>
-                    )}
+
+                      {entry.amountSpent !=
+                        null && (
+                        <Text
+                          style={
+                            styles.entrySpent
+                          }
+                        >
+                          Rs.{" "}
+                          {entry.amountSpent.toLocaleString()}
+                        </Text>
+                      )}
+
+                      {entry.pricePerLitre !=
+                        null && (
+                        <Text
+                          style={
+                            styles.entryPrice
+                          }
+                        >
+                          Rs.{" "}
+                          {formatNumber(
+                            entry.pricePerLitre,
+                            2
+                          )}{" "}
+                          / L
+                        </Text>
+                      )}
+                    </View>
                   </View>
-                </View>
-              ))}
+                )
+              )}
             </View>
           )}
         </View>
 
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>
-            MotoPilot fuel tracking uses estimated fuel consumption.
-            Actual fuel level may differ from the estimate.
+        <View
+          style={styles.footer}
+        >
+          <Text
+            style={
+              styles.footerText
+            }
+          >
+            MotoPilot fuel tracking uses estimated
+            fuel consumption. Actual fuel level may
+            differ from the estimate.
           </Text>
         </View>
       </ScrollView>
@@ -1269,6 +2004,14 @@ const styles = StyleSheet.create({
     color: "#dddddd",
     fontSize: 14,
     fontWeight: "700",
+  },
+
+  efficiencySource: {
+    color: "#d42b4e",
+    fontSize: 8,
+    fontWeight: "800",
+    letterSpacing: 1,
+    marginTop: 3,
   },
 
   disclaimer: {
