@@ -1,5 +1,12 @@
-import { useCallback, useState } from "react";
-import { router, useFocusEffect } from "expo-router";
+import {
+  useCallback,
+  useMemo,
+  useState,
+} from "react";
+import {
+  router,
+  useFocusEffect,
+} from "expo-router";
 import {
   Pressable,
   StyleSheet,
@@ -7,10 +14,13 @@ import {
   View,
 } from "react-native";
 
+import { CockpitTabBar } from "@/components/cockpit/CockpitTabBar";
+
 import { useLocation } from "../hooks/useLocation";
 import { useCurrentTime } from "../hooks/useCurrentTime";
 import { useTripTracker } from "../hooks/useTripTracker";
 import { useCompass } from "../hooks/useCompass";
+import { useNavigationSessionState } from "../hooks/useNavigationSessionState";
 
 import {
   getFuelSettings,
@@ -29,8 +39,72 @@ import {
   calculateFuelEfficiency,
 } from "../services/fuelEfficiency";
 
+type TimeTheme = {
+  name:
+    | "MORNING"
+    | "DAY"
+    | "EVENING"
+    | "NIGHT";
+  accent: string;
+  accentSoft: string;
+  glow: string;
+};
+
+function getTimeTheme(
+  date: Date
+): TimeTheme {
+  const hour = date.getHours();
+
+  if (hour >= 5 && hour < 11) {
+    return {
+      name: "MORNING",
+      accent: "#54D7FF",
+      accentSoft: "#183A46",
+      glow: "#54D7FF",
+    };
+  }
+
+  if (hour >= 11 && hour < 17) {
+    return {
+      name: "DAY",
+      accent: "#00D4FF",
+      accentSoft: "#123B46",
+      glow: "#00D4FF",
+    };
+  }
+
+  if (hour >= 17 && hour < 20) {
+    return {
+      name: "EVENING",
+      accent: "#FFB84D",
+      accentSoft: "#493517",
+      glow: "#FFB84D",
+    };
+  }
+
+  return {
+    name: "NIGHT",
+    accent: "#9B8CFF",
+    accentSoft: "#292448",
+    glow: "#9B8CFF",
+  };
+}
+
+function formatNavigationDistance(
+  meters: number
+): string {
+  if (meters >= 1000) {
+    return `${(
+      meters / 1000
+    ).toFixed(1)} KM`;
+  }
+
+  return `${Math.round(meters)} M`;
+}
+
 export default function HomeScreen() {
-  const currentTime = useCurrentTime();
+  const currentTime =
+    useCurrentTime();
 
   const {
     location,
@@ -39,6 +113,9 @@ export default function HomeScreen() {
     speedKmh,
   } = useLocation();
 
+  const navigationSession =
+    useNavigationSessionState();
+
   const {
     heading,
     magneticHeading,
@@ -46,7 +123,8 @@ export default function HomeScreen() {
     error: compassError,
   } = useCompass({
     enabled: true,
-    gpsHeading: location?.heading ?? null,
+    gpsHeading:
+      location?.heading ?? null,
     speedKmh,
   });
 
@@ -63,13 +141,24 @@ export default function HomeScreen() {
     speedKmh,
   });
 
-  const [fuelSettings, setFuelSettings] =
-    useState<FuelSettings | null>(null);
+  const [
+    fuelSettings,
+    setFuelSettings,
+  ] =
+    useState<FuelSettings | null>(
+      null
+    );
 
-  const [measuredKmPerLitre, setMeasuredKmPerLitre] =
+  const [
+    measuredKmPerLitre,
+    setMeasuredKmPerLitre,
+  ] =
     useState<number | null>(null);
 
-  const [fuelError, setFuelError] =
+  const [
+    fuelError,
+    setFuelError,
+  ] =
     useState<string | null>(null);
 
   useFocusEffect(
@@ -128,6 +217,14 @@ export default function HomeScreen() {
     }, [])
   );
 
+  const theme = useMemo(
+    () =>
+      getTimeTheme(
+        currentTime
+      ),
+    [currentTime]
+  );
+
   const gpsStatus = error
     ? "GPS ERROR"
     : location
@@ -135,22 +232,18 @@ export default function HomeScreen() {
       : "GPS SEARCHING";
 
   const tankCapacity =
-    fuelSettings?.tankCapacityLitres ?? 0;
+    fuelSettings
+      ?.tankCapacityLitres ?? 0;
 
   const estimatedFuelRemaining =
-    fuelSettings?.estimatedFuelRemainingLitres ?? 0;
+    fuelSettings
+      ?.estimatedFuelRemainingLitres ??
+    0;
 
-  /*
-   * Measured fuel efficiency becomes the
-   * authoritative value once enough
-   * full-tank checkpoints exist.
-   *
-   * Until then, use the manually configured
-   * efficiency from Fuel Settings.
-   */
   const estimatedKmPerLitre =
     measuredKmPerLitre ??
-    fuelSettings?.estimatedKmPerLitre ??
+    fuelSettings
+      ?.estimatedKmPerLitre ??
     0;
 
   const fuelPercentage =
@@ -180,7 +273,9 @@ export default function HomeScreen() {
     Number.isFinite(heading)
       ? Math.round(heading)
       : location?.heading != null
-        ? Math.round(location.heading)
+        ? Math.round(
+            location.heading
+          )
         : null;
 
   const compassStatus = compassError
@@ -191,178 +286,670 @@ export default function HomeScreen() {
         ? "MAG HEADING"
         : "COMPASS";
 
+  const isNavigating =
+    navigationSession.status ===
+      "NAVIGATING" ||
+    navigationSession.status ===
+      "REROUTING";
+
+  const navigationDistanceKm =
+    navigationSession
+      .remainingDistanceMeters /
+    1000;
+
+  const navigationEtaMinutes =
+    Math.ceil(
+      navigationSession
+        .remainingDurationSeconds /
+        60
+    );
+
+  const navigationProgress =
+    Math.min(
+      100,
+      Math.max(
+        0,
+        navigationSession.progressPercent
+      )
+    );
+
+  const isOffRoute =
+    navigationSession.offRoute;
+
   return (
-    <View style={styles.container}>
-      {/* Header */}
+    <View
+      style={[
+        styles.container,
+        {
+          borderTopColor:
+            theme.accentSoft,
+        },
+      ]}
+    >
+      {/* =====================================================
+          HEADER
+          ===================================================== */}
+
       <View style={styles.header}>
         <View>
-          <Text style={styles.logo}>
-            MOTO PILOT
-          </Text>
+          <View
+            style={styles.brandRow}
+          >
+            <View
+              style={[
+                styles.brandIndicator,
+                {
+                  backgroundColor:
+                    theme.accent,
+                  shadowColor:
+                    theme.glow,
+                },
+              ]}
+            />
 
-          <Text style={styles.subtitle}>
+            <Text style={styles.logo}>
+              MOTO PILOT
+            </Text>
+          </View>
+
+          <Text
+            style={styles.subtitle}
+          >
             MOTORCYCLE COCKPIT
           </Text>
         </View>
 
-        <Text style={styles.time}>
-          {currentTime.toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          })}
-        </Text>
-      </View>
-
-      {/* GPS Status */}
-      <View style={styles.gpsContainer}>
         <View
-          style={[
-            styles.gpsDot,
-            error
-              ? styles.gpsError
-              : location
-                ? styles.gpsReady
-                : styles.gpsSearching,
-          ]}
-        />
+          style={styles.headerRight}
+        >
+          <Text style={styles.time}>
+            {currentTime.toLocaleTimeString(
+              [],
+              {
+                hour: "2-digit",
+                minute: "2-digit",
+              }
+            )}
+          </Text>
 
-        <Text style={styles.gpsText}>
-          {gpsStatus}
+          <View
+            style={styles.modeRow}
+          >
+            <View
+              style={[
+                styles.statusDot,
+                {
+                  backgroundColor:
+                    theme.accent,
+                },
+              ]}
+            />
+
+            <Text
+              style={styles.modeText}
+            >
+              {theme.name}
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      {/* =====================================================
+          GPS STATUS
+          ===================================================== */}
+
+      <View
+        style={styles.statusBar}
+      >
+        <View
+          style={styles.statusItem}
+        >
+          <View
+            style={[
+              styles.statusIndicator,
+              {
+                backgroundColor:
+                  error
+                    ? "#FF5263"
+                    : location
+                      ? "#39D98A"
+                      : "#FFB547",
+              },
+            ]}
+          />
+
+          <Text
+            style={styles.statusLabel}
+          >
+            {gpsStatus}
+          </Text>
+        </View>
+
+        <Text
+          style={styles.statusSeparator}
+        >
+          /
+        </Text>
+
+        <Text
+          style={styles.statusMeta}
+        >
+          {updateCount} UPDATES
         </Text>
       </View>
 
-      <Text style={styles.updateCount}>
-        GPS UPDATES: {updateCount}
-      </Text>
+      {/* =====================================================
+          MAIN SPEED COCKPIT
+          ===================================================== */}
 
-      {/* GPS Debug Information */}
-      <View style={styles.debugContainer}>
-        {error ? (
-          <Text style={styles.debugError}>
-            {error}
-          </Text>
-        ) : location ? (
-          <>
-            <Text style={styles.debugText}>
-              LAT:{" "}
-              {location.latitude.toFixed(5)}
-            </Text>
-
-            <Text style={styles.debugText}>
-              LNG:{" "}
-              {location.longitude.toFixed(5)}
-            </Text>
-
-            <Text style={styles.debugText}>
-              ACCURACY:{" "}
-              {location.accuracy != null
-                ? `${location.accuracy.toFixed(
-                    1
-                  )} m`
-                : "N/A"}
-            </Text>
-          </>
-        ) : (
-          <Text style={styles.debugText}>
-            Waiting for GPS location...
-          </Text>
-        )}
-      </View>
-
-      {/* Speed */}
-      <View style={styles.speedSection}>
-        <Text style={styles.speedLabel}>
+      <View
+        style={styles.speedSection}
+      >
+        <Text
+          style={styles.speedEyebrow}
+        >
           CURRENT SPEED
         </Text>
 
-        <View style={styles.speedRow}>
+        <View
+          style={styles.speedDisplay}
+        >
           <Text style={styles.speed}>
             {speedKmh}
           </Text>
 
-          <Text style={styles.speedUnit}>
-            KM/H
-          </Text>
+          <View
+            style={
+              styles.speedUnitContainer
+            }
+          >
+            <Text
+              style={styles.speedUnit}
+            >
+              KM/H
+            </Text>
+
+            <View
+              style={[
+                styles.speedAccent,
+                {
+                  backgroundColor:
+                    theme.accent,
+                },
+              ]}
+            />
+          </View>
         </View>
 
-        <Text style={styles.direction}>
-          {displayHeading != null
-            ? `${displayHeading}°`
-            : "N"}
-        </Text>
+        <View
+          style={styles.headingRow}
+        >
+          <Text
+            style={[
+              styles.headingValue,
+              {
+                color:
+                  theme.accent,
+              },
+            ]}
+          >
+            {displayHeading != null
+              ? `${displayHeading}°`
+              : "--"}
+          </Text>
 
-        <Text style={styles.compassStatus}>
-          {compassStatus}
-        </Text>
+          <Text
+            style={styles.headingLabel}
+          >
+            {compassStatus}
+          </Text>
+        </View>
       </View>
 
-      {/* Main Stats */}
-      <View style={styles.statsContainer}>
-        <View style={styles.stat}>
-          <Text style={styles.statLabel}>
+      {/* =====================================================
+          TELEMETRY
+          ===================================================== */}
+
+      <View
+        style={styles.telemetryRow}
+      >
+        <View
+          style={styles.telemetryItem}
+        >
+          <Text
+            style={
+              styles.telemetryLabel
+            }
+          >
             TRIP
           </Text>
 
-          <Text style={styles.statValue}>
-            {distanceKm.toFixed(1)}
-          </Text>
+          <View
+            style={
+              styles.telemetryValueRow
+            }
+          >
+            <Text
+              style={
+                styles.telemetryValue
+              }
+            >
+              {distanceKm.toFixed(
+                1
+              )}
+            </Text>
 
-          <Text style={styles.statUnit}>
-            KM
-          </Text>
+            <Text
+              style={
+                styles.telemetryUnit
+              }
+            >
+              KM
+            </Text>
+          </View>
         </View>
 
-        <View style={styles.divider} />
+        <View
+          style={[
+            styles.telemetryDivider,
+            {
+              backgroundColor:
+                theme.accentSoft,
+            },
+          ]}
+        />
 
-        <View style={styles.stat}>
-          <Text style={styles.statLabel}>
+        <View
+          style={styles.telemetryItem}
+        >
+          <Text
+            style={
+              styles.telemetryLabel
+            }
+          >
             FUEL
           </Text>
 
-          <Text style={styles.statValue}>
-            {Math.round(fuelPercentage)}
-          </Text>
+          <View
+            style={
+              styles.telemetryValueRow
+            }
+          >
+            <Text
+              style={[
+                styles.telemetryValue,
+                {
+                  color:
+                    fuelPercentage <=
+                    20
+                      ? "#FF5263"
+                      : fuelPercentage <=
+                          50
+                        ? "#FFB547"
+                        : "#F5F7FA",
+                },
+              ]}
+            >
+              {Math.round(
+                fuelPercentage
+              )}
+            </Text>
 
-          <Text style={styles.statUnit}>
-            %
-          </Text>
+            <Text
+              style={
+                styles.telemetryUnit
+              }
+            >
+              %
+            </Text>
+          </View>
         </View>
 
-        <View style={styles.divider} />
+        <View
+          style={[
+            styles.telemetryDivider,
+            {
+              backgroundColor:
+                theme.accentSoft,
+            },
+          ]}
+        />
 
-        <View style={styles.stat}>
-          <Text style={styles.statLabel}>
+        <View
+          style={styles.telemetryItem}
+        >
+          <Text
+            style={
+              styles.telemetryLabel
+            }
+          >
             RANGE
           </Text>
 
-          <Text style={styles.statValue}>
-            {Math.round(estimatedRangeKm)}
-          </Text>
+          <View
+            style={
+              styles.telemetryValueRow
+            }
+          >
+            <Text
+              style={
+                styles.telemetryValue
+              }
+            >
+              {Math.round(
+                estimatedRangeKm
+              )}
+            </Text>
 
-          <Text style={styles.statUnit}>
-            KM
-          </Text>
+            <Text
+              style={
+                styles.telemetryUnit
+              }
+            >
+              KM
+            </Text>
+          </View>
         </View>
       </View>
 
       {fuelError && (
-        <Text style={styles.fuelError}>
-          FUEL: {fuelError}
+        <Text
+          style={styles.fuelError}
+        >
+          FUEL SYSTEM ERROR
         </Text>
       )}
 
-      {/* Trip Control */}
-      <View style={styles.tripControl}>
-        <Text style={styles.tripControlLabel}>
-          {isTracking
-            ? "RIDE IN PROGRESS"
-            : "TRIP TRACKING"}
-        </Text>
+      {/* =====================================================
+          ACTIVE NAVIGATION
+          ===================================================== */}
+
+      {isNavigating &&
+        navigationSession.destination && (
+          <View
+            style={[
+              styles.navigationPanel,
+              {
+                borderColor:
+                  theme.accentSoft,
+              },
+            ]}
+          >
+            <View
+              style={
+                styles.navigationHeader
+              }
+            >
+              <View
+                style={
+                  styles.navigationTitleRow
+                }
+              >
+                <View
+                  style={[
+                    styles.navigationLiveDot,
+                    {
+                      backgroundColor:
+                        theme.accent,
+                    },
+                  ]}
+                />
+
+                <Text
+                  style={[
+                    styles.navigationTitle,
+                    {
+                      color:
+                        theme.accent,
+                    },
+                  ]}
+                >
+                  NAVIGATION ACTIVE
+                </Text>
+              </View>
+
+              <Text
+                style={
+                  styles.navigationPercent
+                }
+              >
+                {Math.round(
+                  navigationProgress
+                )}
+                %
+              </Text>
+            </View>
+
+            <Text
+              style={
+                styles.navigationDestination
+              }
+              numberOfLines={1}
+            >
+              {
+                navigationSession
+                  .destination.name
+              }
+            </Text>
+
+            {navigationSession.currentStep && (
+              <View
+                style={
+                  styles.maneuver
+                }
+              >
+                <View
+                  style={[
+                    styles.maneuverIcon,
+                    {
+                      borderColor:
+                        theme.accentSoft,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.maneuverArrow,
+                      {
+                        color:
+                          theme.accent,
+                      },
+                    ]}
+                  >
+                    →
+                  </Text>
+                </View>
+
+                <View
+                  style={
+                    styles.maneuverContent
+                  }
+                >
+                  <Text
+                    style={
+                      styles.maneuverInstruction
+                    }
+                    numberOfLines={1}
+                  >
+                    {
+                      navigationSession
+                        .currentStep
+                        .instruction
+                    }
+                  </Text>
+
+                  <Text
+                    style={
+                      styles.maneuverDistance
+                    }
+                  >
+                    {formatNavigationDistance(
+                      navigationSession
+                        .distanceToNextManeuverMeters
+                    )}
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            <View
+              style={
+                styles.navigationStats
+              }
+            >
+              <View>
+                <Text
+                  style={
+                    styles.navigationStatLabel
+                  }
+                >
+                  REMAINING
+                </Text>
+
+                <Text
+                  style={
+                    styles.navigationStatValue
+                  }
+                >
+                  {navigationDistanceKm >=
+                  1
+                    ? `${navigationDistanceKm.toFixed(
+                        1
+                      )} KM`
+                    : `${Math.round(
+                        navigationSession
+                          .remainingDistanceMeters
+                      )} M`}
+                </Text>
+              </View>
+
+              <View>
+                <Text
+                  style={
+                    styles.navigationStatLabel
+                  }
+                >
+                  ETA
+                </Text>
+
+                <Text
+                  style={
+                    styles.navigationStatValue
+                  }
+                >
+                  {navigationEtaMinutes}{" "}
+                  MIN
+                </Text>
+              </View>
+
+              <Pressable
+                style={({
+                  pressed,
+                }) => [
+                  styles.openNavigationButton,
+                  {
+                    borderColor:
+                      theme.accentSoft,
+                    backgroundColor:
+                      pressed
+                        ? theme.accentSoft
+                        : "transparent",
+                  },
+                ]}
+                onPress={() =>
+                  router.push(
+                    "/navigation"
+                  )
+                }
+              >
+                <Text
+                  style={[
+                    styles.openNavigationText,
+                    {
+                      color:
+                        theme.accent,
+                    },
+                  ]}
+                >
+                  OPEN NAV
+                </Text>
+              </Pressable>
+            </View>
+
+            {isOffRoute && (
+              <Text
+                style={styles.offRoute}
+              >
+                OFF ROUTE —
+                RECALCULATING
+              </Text>
+            )}
+
+            <View
+              style={
+                styles.progressTrack
+              }
+            >
+              <View
+                style={[
+                  styles.progressFill,
+                  {
+                    width: `${navigationProgress}%`,
+                    backgroundColor:
+                      theme.accent,
+                  },
+                ]}
+              />
+            </View>
+          </View>
+        )}
+
+      {/* =====================================================
+          RIDE CONTROL
+          ===================================================== */}
+
+      <View
+        style={styles.rideControl}
+      >
+        <View>
+          <Text
+            style={
+              styles.rideControlLabel
+            }
+          >
+            {isTracking
+              ? "RIDE IN PROGRESS"
+              : "READY TO RIDE"}
+          </Text>
+
+          {isTracking && (
+            <Text
+              style={
+                styles.rideControlValue
+              }
+            >
+              {duration}
+            </Text>
+          )}
+        </View>
 
         <Pressable
-          style={({ pressed }) => [
-            styles.tripControlButton,
-            pressed && styles.buttonPressed,
+          style={({
+            pressed,
+          }) => [
+            styles.rideButton,
+            {
+              borderColor:
+                isTracking
+                  ? "#FF5263"
+                  : theme.accent,
+              backgroundColor:
+                isTracking
+                  ? "rgba(255,82,99,0.08)"
+                  : theme.accentSoft,
+            },
+            pressed &&
+              styles.rideButtonPressed,
           ]}
           onPress={
             isTracking
@@ -370,7 +957,29 @@ export default function HomeScreen() {
               : startTrip
           }
         >
-          <Text style={styles.tripControlButtonText}>
+          <View
+            style={[
+              styles.rideButtonDot,
+              {
+                backgroundColor:
+                  isTracking
+                    ? "#FF5263"
+                    : theme.accent,
+              },
+            ]}
+          />
+
+          <Text
+            style={[
+              styles.rideButtonText,
+              {
+                color:
+                  isTracking
+                    ? "#FF5263"
+                    : theme.accent,
+              },
+            ]}
+          >
             {isTracking
               ? "STOP RIDE"
               : "START RIDE"}
@@ -378,163 +987,159 @@ export default function HomeScreen() {
         </Pressable>
       </View>
 
-      {/* Live Ride Statistics */}
+      {/* =====================================================
+          LIVE RIDE STATS
+          ===================================================== */}
+
       {isTracking && (
-        <View style={styles.rideStats}>
-          <View style={styles.rideStat}>
-            <Text style={styles.rideStatLabel}>
-              TIME
+        <View
+          style={styles.rideStats}
+        >
+          <View
+            style={styles.rideStat}
+          >
+            <Text
+              style={
+                styles.rideStatLabel
+              }
+            >
+              AVG SPEED
             </Text>
 
-            <Text style={styles.rideStatValue}>
-              {duration}
-            </Text>
-          </View>
-
-          <View style={styles.rideStat}>
-            <Text style={styles.rideStatLabel}>
-              AVG
-            </Text>
-
-            <Text style={styles.rideStatValue}>
+            <Text
+              style={
+                styles.rideStatValue
+              }
+            >
               {Math.round(
                 averageSpeedKmh
               )}
             </Text>
 
-            <Text style={styles.rideStatUnit}>
+            <Text
+              style={
+                styles.rideStatUnit
+              }
+            >
               KM/H
             </Text>
           </View>
 
-          <View style={styles.rideStat}>
-            <Text style={styles.rideStatLabel}>
-              MAX
+          <View
+            style={styles.rideStat}
+          >
+            <Text
+              style={
+                styles.rideStatLabel
+              }
+            >
+              MAX SPEED
             </Text>
 
-            <Text style={styles.rideStatValue}>
+            <Text
+              style={
+                styles.rideStatValue
+              }
+            >
               {Math.round(
                 maxSpeedKmh
               )}
             </Text>
 
-            <Text style={styles.rideStatUnit}>
+            <Text
+              style={
+                styles.rideStatUnit
+              }
+            >
               KM/H
+            </Text>
+          </View>
+
+          <View
+            style={styles.rideStat}
+          >
+            <Text
+              style={
+                styles.rideStatLabel
+              }
+            >
+              DISTANCE
+            </Text>
+
+            <Text
+              style={
+                styles.rideStatValue
+              }
+            >
+              {distanceKm.toFixed(
+                1
+              )}
+            </Text>
+
+            <Text
+              style={
+                styles.rideStatUnit
+              }
+            >
+              KM
             </Text>
           </View>
         </View>
       )}
 
-      {/* Test Controls */}
-      <View style={styles.testControls}>
-        {/* Compass Test */}
+      {/* =====================================================
+          DEVELOPMENT TESTS
+          ===================================================== */}
+
+      <View
+        style={styles.testRow}
+      >
         <Pressable
           style={({ pressed }) => [
             styles.testButton,
-            pressed && styles.buttonPressed,
+            pressed &&
+              styles.testButtonPressed,
           ]}
           onPress={() =>
-            router.push("/compass-test")
+            router.push(
+              "/compass-test"
+            )
           }
         >
-          <Text style={styles.testButtonText}>
-            COMPASS TEST
+          <Text
+            style={styles.testText}
+          >
+            COMPASS
           </Text>
         </Pressable>
 
-        {/* Camera Test */}
         <Pressable
           style={({ pressed }) => [
             styles.testButton,
-            pressed && styles.buttonPressed,
+            pressed &&
+              styles.testButtonPressed,
           ]}
           onPress={() =>
-            router.push("/camera-test")
+            router.push(
+              "/camera-test"
+            )
           }
         >
-          <Text style={styles.testButtonText}>
-            CAMERA TEST
+          <Text
+            style={styles.testText}
+          >
+            CAMERA
           </Text>
         </Pressable>
       </View>
 
-      {/* Navigation Controls */}
-      <View style={styles.controls}>
-        <Pressable
-          style={({ pressed }) => [
-            styles.control,
-            pressed && styles.controlPressed,
-          ]}
-          onPress={() =>
-            router.push("/navigation")
-          }
-        >
-          <Text style={styles.controlText}>
-            NAV
-          </Text>
-        </Pressable>
+      {/* =====================================================
+          NEW COCKPIT NAVIGATION
+          ===================================================== */}
 
-        <Pressable
-          style={({ pressed }) => [
-            styles.control,
-            pressed && styles.controlPressed,
-          ]}
-          onPress={() =>
-            router.push("/rides")
-          }
-        >
-          <Text style={styles.controlText}>
-            RIDES
-          </Text>
-        </Pressable>
-
-        <Pressable
-          style={({ pressed }) => [
-            styles.control,
-            pressed && styles.controlPressed,
-          ]}
-          onPress={() =>
-            router.push("/fuel")
-          }
-        >
-          <Text style={styles.controlText}>
-            FUEL
-          </Text>
-        </Pressable>
-
-        <Pressable
-          style={({ pressed }) => [
-            styles.control,
-            pressed && styles.controlPressed,
-          ]}
-          onPress={() =>
-            router.push("/media")
-          }
-        >
-          <Text style={styles.controlText}>
-            MEDIA
-          </Text>
-        </Pressable>
-
-        <Pressable
-          style={({ pressed }) => [
-            styles.control,
-            pressed && styles.controlPressed,
-          ]}
-          onPress={() =>
-            router.push("/more")
-          }
-        >
-          <Text style={styles.controlText}>
-            MORE
-          </Text>
-        </Pressable>
-      </View>
-
-      {/* Footer */}
-      <Text style={styles.footer}>
-        MOTOPILOT • OFFLINE FIRST
-      </Text>
+      <CockpitTabBar
+        activeTab="dashboard"
+      />
     </View>
   );
 }
@@ -542,320 +1147,519 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#050505",
-    paddingHorizontal: 24,
-    paddingTop: 55,
-    paddingBottom: 25,
+    backgroundColor: "#080C12",
+    paddingHorizontal: 20,
+    paddingTop: 48,
+    paddingBottom: 90,
+    borderTopWidth: 1,
   },
+
+  /* ========================================================
+     HEADER
+     ======================================================== */
 
   header: {
     flexDirection: "row",
-    justifyContent: "space-between",
+    justifyContent:
+      "space-between",
+    alignItems:
+      "flex-start",
+  },
+
+  brandRow: {
+    flexDirection: "row",
     alignItems: "center",
+  },
+
+  brandIndicator: {
+    width: 5,
+    height: 20,
+    borderRadius: 3,
+    marginRight: 9,
+    shadowOpacity: 0.7,
+    shadowRadius: 7,
+    elevation: 5,
   },
 
   logo: {
-    color: "#ffffff",
-    fontSize: 22,
+    color: "#F5F7FA",
+    fontSize: 21,
     fontWeight: "800",
-    letterSpacing: 2,
+    letterSpacing: 2.5,
   },
 
   subtitle: {
-    color: "#666666",
-    fontSize: 9,
+    color: "#596575",
+    fontSize: 8,
+    fontWeight: "700",
     letterSpacing: 2,
-    marginTop: 4,
+    marginTop: 5,
+    marginLeft: 14,
+  },
+
+  headerRight: {
+    alignItems: "flex-end",
   },
 
   time: {
-    color: "#ffffff",
-    fontSize: 16,
+    color: "#F5F7FA",
+    fontSize: 19,
     fontWeight: "600",
-  },
-
-  gpsContainer: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: 30,
-  },
-
-  gpsDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 8,
-  },
-
-  gpsReady: {
-    backgroundColor: "#e63946",
-  },
-
-  gpsSearching: {
-    backgroundColor: "#777777",
-  },
-
-  gpsError: {
-    backgroundColor: "#ff0000",
-  },
-
-  gpsText: {
-    color: "#aaaaaa",
-    fontSize: 11,
-    fontWeight: "600",
-    letterSpacing: 1.5,
-  },
-
-  updateCount: {
-    color: "#444444",
-    fontSize: 9,
-    textAlign: "center",
     letterSpacing: 1,
-    marginTop: 6,
   },
 
-  debugContainer: {
-    alignItems: "center",
-    marginTop: 12,
-    minHeight: 55,
-  },
-
-  debugText: {
-    color: "#555555",
-    fontSize: 10,
-    marginTop: 2,
-  },
-
-  debugError: {
-    color: "#ff4d4d",
-    fontSize: 10,
-    textAlign: "center",
-  },
-
-  speedSection: {
-    alignItems: "center",
-    marginTop: 20,
-  },
-
-  speedLabel: {
-    color: "#666666",
-    fontSize: 10,
-    letterSpacing: 2,
-    fontWeight: "600",
-  },
-
-  speedRow: {
+  modeRow: {
     flexDirection: "row",
-    alignItems: "flex-end",
+    alignItems: "center",
     marginTop: 5,
   },
 
+  statusDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    marginRight: 6,
+  },
+
+  modeText: {
+    color: "#596575",
+    fontSize: 7,
+    fontWeight: "700",
+    letterSpacing: 1.2,
+  },
+
+  /* ========================================================
+     STATUS
+     ======================================================== */
+
+  statusBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 22,
+  },
+
+  statusItem: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+
+  statusIndicator: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginRight: 7,
+  },
+
+  statusLabel: {
+    color: "#A2ACB9",
+    fontSize: 8,
+    fontWeight: "700",
+    letterSpacing: 1.2,
+  },
+
+  statusSeparator: {
+    color: "#303946",
+    marginHorizontal: 9,
+    fontSize: 9,
+  },
+
+  statusMeta: {
+    color: "#46515F",
+    fontSize: 7,
+    fontWeight: "600",
+    letterSpacing: 1,
+  },
+
+  /* ========================================================
+     SPEED
+     ======================================================== */
+
+  speedSection: {
+    alignItems: "center",
+    marginTop: 18,
+  },
+
+  speedEyebrow: {
+    color: "#596575",
+    fontSize: 8,
+    fontWeight: "700",
+    letterSpacing: 2,
+  },
+
+  speedDisplay: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    marginTop: 2,
+  },
+
   speed: {
-    color: "#ffffff",
-    fontSize: 105,
-    lineHeight: 115,
+    color: "#F5F7FA",
+    fontSize: 104,
+    lineHeight: 112,
     fontWeight: "200",
     letterSpacing: -5,
   },
 
+  speedUnitContainer: {
+    alignItems: "flex-start",
+    marginBottom: 18,
+    marginLeft: 9,
+  },
+
   speedUnit: {
-    color: "#777777",
-    fontSize: 13,
-    fontWeight: "700",
-    letterSpacing: 1,
-    marginBottom: 20,
-    marginLeft: 10,
-  },
-
-  direction: {
-    color: "#d42b4e",
-    fontSize: 16,
-    fontWeight: "700",
-    marginTop: -5,
-  },
-
-  compassStatus: {
-    color: "#444444",
-    fontSize: 8,
-    fontWeight: "700",
-    letterSpacing: 1,
-    marginTop: 3,
-  },
-
-  statsContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-around",
-    marginTop: 35,
-    paddingVertical: 20,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: "#1c1c1c",
-  },
-
-  stat: {
-    alignItems: "center",
-    flex: 1,
-  },
-
-  statLabel: {
-    color: "#555555",
-    fontSize: 9,
-    fontWeight: "700",
-    letterSpacing: 1.5,
-  },
-
-  statValue: {
-    color: "#ffffff",
-    fontSize: 22,
-    fontWeight: "600",
-    marginTop: 5,
-  },
-
-  statUnit: {
-    color: "#666666",
-    fontSize: 8,
-    marginTop: 2,
-  },
-
-  divider: {
-    width: 1,
-    height: 35,
-    backgroundColor: "#222222",
-  },
-
-  fuelError: {
-    color: "#ff4d4d",
-    fontSize: 9,
-    textAlign: "center",
-    marginTop: 8,
-  },
-
-  tripControl: {
-    alignItems: "center",
-    marginTop: 25,
-  },
-
-  tripControlLabel: {
-    color: "#555555",
-    fontSize: 9,
-    fontWeight: "700",
-    letterSpacing: 1.5,
-    marginBottom: 8,
-  },
-
-  tripControlButton: {
-    backgroundColor: "#d42b4e",
-    paddingHorizontal: 28,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-
-  tripControlButtonText: {
-    color: "#ffffff",
-    fontSize: 11,
+    color: "#788494",
+    fontSize: 10,
     fontWeight: "800",
-    letterSpacing: 1.2,
-  },
-
-  buttonPressed: {
-    opacity: 0.7,
-  },
-
-  rideStats: {
-    flexDirection: "row",
-    justifyContent: "space-around",
-    alignItems: "center",
-    marginTop: 20,
-    paddingVertical: 14,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: "#1c1c1c",
-  },
-
-  rideStat: {
-    alignItems: "center",
-    flex: 1,
-  },
-
-  rideStatLabel: {
-    color: "#555555",
-    fontSize: 8,
-    fontWeight: "700",
     letterSpacing: 1.5,
   },
 
-  rideStatValue: {
-    color: "#ffffff",
-    fontSize: 18,
-    fontWeight: "600",
+  speedAccent: {
+    width: 25,
+    height: 2,
+    marginTop: 5,
+    borderRadius: 1,
+  },
+
+  headingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: -3,
+  },
+
+  headingValue: {
+    fontSize: 14,
+    fontWeight: "800",
+    letterSpacing: 1,
+  },
+
+  headingLabel: {
+    color: "#596575",
+    fontSize: 7,
+    fontWeight: "700",
+    letterSpacing: 1,
+    marginLeft: 8,
+  },
+
+  /* ========================================================
+     TELEMETRY
+     ======================================================== */
+
+  telemetryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 22,
+    paddingVertical: 15,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: "#18202A",
+  },
+
+  telemetryItem: {
+    flex: 1,
+    alignItems: "center",
+  },
+
+  telemetryLabel: {
+    color: "#596575",
+    fontSize: 7,
+    fontWeight: "800",
+    letterSpacing: 1.5,
+  },
+
+  telemetryValueRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
     marginTop: 4,
   },
 
-  rideStatUnit: {
-    color: "#666666",
-    fontSize: 7,
-    marginTop: 1,
+  telemetryValue: {
+    color: "#F5F7FA",
+    fontSize: 22,
+    fontWeight: "600",
   },
 
-  testControls: {
+  telemetryUnit: {
+    color: "#697584",
+    fontSize: 7,
+    fontWeight: "700",
+    marginLeft: 3,
+  },
+
+  telemetryDivider: {
+    width: 1,
+    height: 32,
+  },
+
+  fuelError: {
+    color: "#FF5263",
+    textAlign: "center",
+    fontSize: 7,
+    fontWeight: "700",
+    letterSpacing: 1,
+    marginTop: 6,
+  },
+
+  /* ========================================================
+     NAVIGATION
+     ======================================================== */
+
+  navigationPanel: {
+    marginTop: 13,
+    padding: 12,
+    borderWidth: 1,
+    borderRadius: 14,
+    backgroundColor: "#0D131B",
+  },
+
+  navigationHeader: {
     flexDirection: "row",
+    justifyContent:
+      "space-between",
+    alignItems: "center",
+  },
+
+  navigationTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+
+  navigationLiveDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    marginRight: 6,
+  },
+
+  navigationTitle: {
+    fontSize: 7,
+    fontWeight: "800",
+    letterSpacing: 1.5,
+  },
+
+  navigationPercent: {
+    color: "#8C97A5",
+    fontSize: 10,
+    fontWeight: "700",
+  },
+
+  navigationDestination: {
+    color: "#F5F7FA",
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: 5,
+  },
+
+  maneuver: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 9,
+  },
+
+  maneuverIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    borderWidth: 1,
     justifyContent: "center",
-    gap: 10,
+    alignItems: "center",
+  },
+
+  maneuverArrow: {
+    fontSize: 20,
+    fontWeight: "800",
+  },
+
+  maneuverContent: {
+    flex: 1,
+    marginLeft: 9,
+  },
+
+  maneuverInstruction: {
+    color: "#E7EBF0",
+    fontSize: 9,
+    fontWeight: "600",
+  },
+
+  maneuverDistance: {
+    color: "#667281",
+    fontSize: 7,
+    fontWeight: "600",
+    marginTop: 3,
+  },
+
+  navigationStats: {
+    flexDirection: "row",
+    alignItems: "center",
     marginTop: 10,
   },
 
-  testButton: {
-    paddingHorizontal: 20,
-    paddingVertical: 9,
-    borderWidth: 1,
-    borderColor: "#333333",
-    borderRadius: 8,
+  navigationStatLabel: {
+    color: "#596575",
+    fontSize: 6,
+    fontWeight: "800",
+    letterSpacing: 1,
   },
 
-  testButtonText: {
-    color: "#888888",
-    fontSize: 9,
+  navigationStatValue: {
+    color: "#F5F7FA",
+    fontSize: 10,
     fontWeight: "700",
-    letterSpacing: 1.2,
+    marginTop: 2,
   },
 
-  controls: {
+  openNavigationButton: {
+    marginLeft: "auto",
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+
+  openNavigationText: {
+    fontSize: 7,
+    fontWeight: "800",
+    letterSpacing: 1,
+  },
+
+  offRoute: {
+    color: "#FF5263",
+    fontSize: 7,
+    fontWeight: "800",
+    letterSpacing: 1,
+    marginTop: 8,
+  },
+
+  progressTrack: {
+    height: 2,
+    backgroundColor: "#202934",
+    borderRadius: 2,
+    overflow: "hidden",
+    marginTop: 9,
+  },
+
+  progressFill: {
+    height: "100%",
+    borderRadius: 2,
+  },
+
+  /* ========================================================
+     RIDE CONTROL
+     ======================================================== */
+
+  rideControl: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 30,
-    gap: 8,
-  },
-
-  control: {
-    flex: 1,
-    height: 48,
-    borderWidth: 1,
-    borderColor: "#222222",
-    borderRadius: 8,
-    justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#0a0a0a",
+    justifyContent:
+      "space-between",
+    marginTop: 15,
   },
 
-  controlPressed: {
-    backgroundColor: "#151515",
-    borderColor: "#d42b4e",
+  rideControlLabel: {
+    color: "#596575",
+    fontSize: 7,
+    fontWeight: "800",
+    letterSpacing: 1.3,
   },
 
-  controlText: {
-    color: "#bbbbbb",
-    fontSize: 9,
-    fontWeight: "700",
-    letterSpacing: 0.8,
+  rideControlValue: {
+    color: "#F5F7FA",
+    fontSize: 14,
+    fontWeight: "600",
+    marginTop: 3,
   },
 
-  footer: {
-    color: "#333333",
+  rideButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  },
+
+  rideButtonPressed: {
+    opacity: 0.65,
+  },
+
+  rideButtonDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginRight: 7,
+  },
+
+  rideButtonText: {
     fontSize: 8,
-    textAlign: "center",
-    letterSpacing: 1.5,
-    marginTop: "auto",
+    fontWeight: "800",
+    letterSpacing: 1,
+  },
+
+  /* ========================================================
+     RIDE STATS
+     ======================================================== */
+
+  rideStats: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 10,
+    paddingVertical: 9,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: "#18202A",
+  },
+
+  rideStat: {
+    flex: 1,
+    alignItems: "center",
+  },
+
+  rideStatLabel: {
+    color: "#596575",
+    fontSize: 6,
+    fontWeight: "800",
+    letterSpacing: 1,
+  },
+
+  rideStatValue: {
+    color: "#F5F7FA",
+    fontSize: 15,
+    fontWeight: "600",
+    marginTop: 3,
+  },
+
+  rideStatUnit: {
+    color: "#667281",
+    fontSize: 6,
+    marginTop: 1,
+  },
+
+  /* ========================================================
+     TEST BUTTONS
+     ======================================================== */
+
+  testRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 8,
+    marginTop: 9,
+  },
+
+  testButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: "#222C37",
+    borderRadius: 7,
+  },
+
+  testButtonPressed: {
+    backgroundColor: "#141D26",
+  },
+
+  testText: {
+    color: "#53606E",
+    fontSize: 6,
+    fontWeight: "800",
+    letterSpacing: 1,
   },
 });

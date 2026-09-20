@@ -14,9 +14,11 @@ import type {
 
 import {
   applyNavigationRoute,
-  createNavigationSessionState,
+  getNavigationSessionState,
+  setNavigationSessionState,
   startNavigationSession,
   stopNavigationSession,
+  subscribeToNavigationSession,
   updateNavigationSession,
   type NavigationSessionState,
 } from "../services/navigation/navigationSession";
@@ -32,31 +34,40 @@ export function useNavigationSession() {
     speedKmh,
   } = useLocation();
 
-  const [session, setSession] =
-    useState<NavigationSessionState>(
-      createNavigationSessionState()
-    );
+  const [
+    session,
+    setSession,
+  ] = useState<NavigationSessionState>(
+    getNavigationSessionState()
+  );
 
-  const [navigationError, setNavigationError] =
-    useState<string | null>(null);
-
-  const sessionRef =
-    useRef<NavigationSessionState>(session);
+  const [
+    navigationError,
+    setNavigationError,
+  ] = useState<string | null>(null);
 
   const reroutingRef =
     useRef(false);
 
   /**
-   * Keep a synchronous reference to the
-   * latest navigation session.
+   * Subscribe to the persistent navigation
+   * session store.
+   *
+   * The session itself is no longer owned by
+   * this screen-level hook.
    */
   useEffect(() => {
-    sessionRef.current = session;
-  }, [session]);
+    setSession(
+      getNavigationSessionState()
+    );
+
+    return subscribeToNavigationSession(
+      setSession
+    );
+  }, []);
 
   /**
-   * Start a navigation session using an
-   * already calculated route.
+   * Start a new navigation session.
    */
   const startNavigation = useCallback(
     (
@@ -80,16 +91,14 @@ export function useNavigationSession() {
           {
             latitude:
               location.latitude,
-
             longitude:
               location.longitude,
           }
         );
 
-      sessionRef.current =
-        nextSession;
-
-      setSession(nextSession);
+      setNavigationSessionState(
+        nextSession
+      );
 
       return true;
     },
@@ -98,6 +107,9 @@ export function useNavigationSession() {
 
   /**
    * Stop navigation completely.
+   *
+   * This should only happen when the user
+   * explicitly chooses to stop navigation.
    */
   const stopNavigation =
     useCallback(() => {
@@ -108,15 +120,14 @@ export function useNavigationSession() {
       const nextSession =
         stopNavigationSession();
 
-      sessionRef.current =
-        nextSession;
-
-      setSession(nextSession);
+      setNavigationSessionState(
+        nextSession
+      );
     }, []);
 
   /**
-   * Calculate a fresh route from the
-   * current GPS position.
+   * Calculate a new route from the current
+   * GPS position to the existing destination.
    */
   const reroute = useCallback(
     async (
@@ -134,17 +145,19 @@ export function useNavigationSession() {
 
       setNavigationError(null);
 
-      setSession((current) => {
-        const next = {
-          ...current,
+      const currentSession =
+        getNavigationSessionState();
 
-          status: "REROUTING" as const,
+      const reroutingSession: NavigationSessionState =
+        {
+          ...currentSession,
+
+          status: "REROUTING",
         };
 
-        sessionRef.current = next;
-
-        return next;
-      });
+      setNavigationSessionState(
+        reroutingSession
+      );
 
       try {
         const route =
@@ -152,7 +165,6 @@ export function useNavigationSession() {
             origin: {
               latitude:
                 location.latitude,
-
               longitude:
                 location.longitude,
             },
@@ -160,32 +172,29 @@ export function useNavigationSession() {
             destination: {
               latitude:
                 destination.latitude,
-
               longitude:
                 destination.longitude,
             },
           });
 
-        const currentSession =
-          sessionRef.current;
+        const latestSession =
+          getNavigationSessionState();
 
         const nextSession =
           applyNavigationRoute(
-            currentSession,
+            latestSession,
             route,
             {
               latitude:
                 location.latitude,
-
               longitude:
                 location.longitude,
             }
           );
 
-        sessionRef.current =
-          nextSession;
-
-        setSession(nextSession);
+        setNavigationSessionState(
+          nextSession
+        );
       } catch (err) {
         console.error(
           "Navigation reroute failed:",
@@ -198,17 +207,13 @@ export function useNavigationSession() {
             : "Unable to reroute."
         );
 
-        setSession((current) => {
-          const next = {
-            ...current,
+        const current =
+          getNavigationSessionState();
 
-            status: "NAVIGATING" as const,
-          };
+        setNavigationSessionState({
+          ...current,
 
-          sessionRef.current =
-            next;
-
-          return next;
+          status: "NAVIGATING",
         });
       } finally {
         reroutingRef.current = false;
@@ -218,8 +223,16 @@ export function useNavigationSession() {
   );
 
   /**
-   * Process each new GPS location while
+   * Process every new GPS location while
    * navigation is active.
+   *
+   * IMPORTANT:
+   *
+   * This hook must eventually be mounted by
+   * the persistent NavigationProvider.
+   *
+   * The navigation screen itself will only
+   * subscribe to the resulting session.
    */
   useEffect(() => {
     if (!location) {
@@ -227,7 +240,7 @@ export function useNavigationSession() {
     }
 
     const currentSession =
-      sessionRef.current;
+      getNavigationSessionState();
 
     if (
       currentSession.status === "IDLE" ||
@@ -242,50 +255,33 @@ export function useNavigationSession() {
         {
           latitude:
             location.latitude,
-
           longitude:
             location.longitude,
         }
       );
 
-    sessionRef.current =
-      result.state;
-
-    setSession(result.state);
+    setNavigationSessionState(
+      result.state
+    );
 
     if (
       result.shouldReroute &&
       result.state.destination &&
       !reroutingRef.current
     ) {
-      reroute(
+      void reroute(
         result.state.destination
       );
     }
   }, [location, reroute]);
 
   return {
-    /**
-     * Raw native GPS location.
-     *
-     * This is always the latest GPS position,
-     * even when navigation has not started.
-     */
     location,
 
-    /**
-     * GPS error from the native location module.
-     */
     gpsError: error,
 
-    /**
-     * Filtered current speed.
-     */
     speedKmh,
 
-    /**
-     * Navigation session state.
-     */
     session,
 
     status:
@@ -312,28 +308,19 @@ export function useNavigationSession() {
     offRoute:
       session.offRoute,
 
-    /**
-     * Current route instruction.
-     */
     currentStep:
       session.currentStep,
 
-    /**
-     * Index of the current route instruction.
-     */
     currentStepIndex:
       session.currentStepIndex,
 
-    /**
-     * Distance from the rider's current
-     * position to the end of the current
-     * navigation step.
-     */
     distanceToNextManeuverMeters:
-  session.distanceToNextManeuverMeters,
-maneuverPhase:
-  session.maneuverPhase,
-navigationError,
+      session.distanceToNextManeuverMeters,
+
+    maneuverPhase:
+      session.maneuverPhase,
+
+    navigationError,
 
     startNavigation,
 

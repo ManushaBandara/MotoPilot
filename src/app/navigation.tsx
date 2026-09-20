@@ -861,15 +861,8 @@ export default function NavigationScreen() {
         <Pressable
           style={styles.backButton}
           onPress={() => {
-            if (
-              status !== "IDLE" &&
-              status !== "ARRIVED"
-            ) {
-              handleStopNavigation();
-            }
-
-            router.back();
-          }}
+  router.back();
+}}
         >
           <Text style={styles.backText}>
             ‹

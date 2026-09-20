@@ -685,16 +685,11 @@ export function updateNavigationSession(
 
   /**
    * Determine the current maneuver phase.
-   *
-   * If the rider moved to a new step,
-   * the previous maneuver has been passed
-   * and the new maneuver starts in a fresh
-   * phase based on its distance.
    */
   const maneuverPhase =
-  getManeuverPhase(
-    navigationStep.distanceToManeuverMeters
-  );
+    getManeuverPhase(
+      navigationStep.distanceToManeuverMeters
+    );
 
   /**
    * If the rider is sufficiently far away,
@@ -832,4 +827,72 @@ export function applyNavigationRoute(
  */
 export function stopNavigationSession(): NavigationSessionState {
   return createNavigationSessionState();
+}
+
+/* ============================================================
+   PERSISTENT NAVIGATION SESSION STORE
+   ============================================================ */
+
+/**
+ * The navigation session must live outside the
+ * navigation screen because the screen can unmount
+ * while navigation is still active.
+ *
+ * This module-level store survives screen changes
+ * for the lifetime of the JavaScript application.
+ */
+let navigationSessionState =
+  createNavigationSessionState();
+
+/**
+ * Subscribers are normally React hooks/components
+ * that need to be notified when navigation changes.
+ */
+const navigationSessionListeners =
+  new Set<
+    (
+      state: NavigationSessionState
+    ) => void
+  >();
+
+/**
+ * Read the current navigation session.
+ */
+export function getNavigationSessionState(): NavigationSessionState {
+  return navigationSessionState;
+}
+
+/**
+ * Subscribe to navigation session changes.
+ *
+ * Returns an unsubscribe function.
+ */
+export function subscribeToNavigationSession(
+  listener: (
+    state: NavigationSessionState
+  ) => void
+): () => void {
+  navigationSessionListeners.add(listener);
+
+  return () => {
+    navigationSessionListeners.delete(
+      listener
+    );
+  };
+}
+
+/**
+ * Replace the current navigation session
+ * and notify all subscribers.
+ */
+export function setNavigationSessionState(
+  state: NavigationSessionState
+): void {
+  navigationSessionState = state;
+
+  navigationSessionListeners.forEach(
+    (listener) => {
+      listener(navigationSessionState);
+    }
+  );
 }
